@@ -1,0 +1,61 @@
+<div class="space-y-4">
+  <div class="flex items-center justify-between">
+    <h1 class="text-lg font-semibold">{{ puedeGestionar ? 'Tareas del evento' : 'Mis tareas' }}</h1>
+    <a
+      *ngIf="puedeGestionar"
+      routerLink="/app/tareas/asignar"
+      class="rounded-full border border-plata-400 px-3 py-1.5 text-xs font-medium text-plata-700"
+    >
+      Asignar
+    </a>
+  </div>
+
+  <p *ngIf="cargando" class="text-sm text-black/40">Cargando…</p>
+
+  <div *ngIf="!cargando && !evento" class="rounded-xl border border-plata-200 bg-white p-4 text-sm text-black/40">
+    No hay un evento activo todavía. Crea uno en la sección Eventos.
+  </div>
+
+  <ng-container *ngIf="!cargando && evento">
+    <p class="text-xs text-black/40">{{ evento.nombre }} · {{ evento.fecha }}</p>
+
+    <form *ngIf="puedeGestionar" [formGroup]="form" (ngSubmit)="crear()" class="flex gap-2">
+      <input
+        formControlName="titulo"
+        placeholder="Nueva tarea…"
+        class="flex-1 rounded-lg border border-plata-300 bg-white px-3 py-2 text-sm outline-none focus:border-plata-500"
+      />
+      <select formControlName="tipo" class="rounded-lg border border-plata-300 bg-white px-2 py-2 text-xs outline-none focus:border-plata-500">
+        <option value="general">General</option>
+        <option value="montaje">Montaje</option>
+        <option value="lavado">Lavado</option>
+        <option value="desmontaje">Desmontaje</option>
+      </select>
+      <button type="submit" class="rounded-lg bg-black px-3 text-sm font-semibold text-white">+</button>
+    </form>
+
+    <p *ngIf="tareasVisibles.length === 0" class="text-sm text-black/40">
+      {{ puedeGestionar ? 'Todavía no cargaste tareas.' : 'No tienes tareas asignadas por ahora.' }}
+    </p>
+
+    <div *ngFor="let tarea of tareasVisibles" class="flex items-center justify-between rounded-xl border border-plata-200 bg-white p-3">
+      <div class="flex items-center gap-3">
+        <button
+          (click)="toggleHecho(tarea)"
+          class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs transition"
+          [ngClass]="tarea.estado === 'hecho' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-plata-300'"
+        >
+          {{ tarea.estado === 'hecho' ? '✓' : '' }}
+        </button>
+        <div>
+          <p class="text-sm" [ngClass]="tarea.estado === 'hecho' ? 'line-through text-black/40' : ''">
+            {{ tarea.titulo }}
+          </p>
+          <app-badge [texto]="tarea.tipo" tono="neutro" />
+        </div>
+      </div>
+
+      <button *ngIf="puedeGestionar" (click)="eliminar(tarea)" class="text-xs text-black/30 hover:text-red-600">✕</button>
+    </div>
+  </ng-container>
+</div>

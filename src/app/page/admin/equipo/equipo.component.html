@@ -1,0 +1,33 @@
+<div class="space-y-5">
+  <h1 class="text-lg font-semibold">Equipo</h1>
+
+  <p *ngIf="cargando" class="text-sm text-black/40">Cargando…</p>
+
+  <div *ngFor="let usuario of equipo" class="rounded-xl border border-plata-200 bg-white p-4">
+    <div class="mb-3 flex items-center justify-between">
+      <div>
+        <p class="text-sm font-medium">{{ usuario.nombre }}</p>
+        <p class="text-xs text-black/40">{{ usuario.email }}</p>
+      </div>
+      <app-badge
+        [texto]="usuario.rol === 'administrador' ? 'Administrador' : usuario.rol === 'jefe_mesero' ? 'Jefe de meseros' : 'Mesero'"
+        [tono]="usuario.rol === 'administrador' ? 'plata' : 'neutro'"
+      />
+    </div>
+
+    <div *ngIf="usuario.uid !== miUid" class="flex gap-2">
+      <select
+        [ngModel]="usuario.rol"
+        (ngModelChange)="cambiarRol(usuario, $event)"
+        class="flex-1 rounded-lg border border-plata-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-plata-500"
+      >
+        <option value="mesero">Mesero</option>
+        <option value="jefe_mesero">Jefe de meseros</option>
+        <option value="administrador">Administrador</option>
+      </select>
+      <button (click)="quitarAcceso(usuario)" class="rounded-lg border border-plata-300 px-3 text-xs text-black/50 hover:text-red-600">
+        Quitar
+      </button>
+    </div>
+  </div>
+</div>

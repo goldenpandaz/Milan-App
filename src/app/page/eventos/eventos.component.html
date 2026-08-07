@@ -1,0 +1,80 @@
+<div class="space-y-4">
+  <div class="flex items-center justify-between">
+    <h1 class="text-lg font-semibold">Eventos</h1>
+    <button
+      *ngIf="puedeCrear"
+      (click)="modalAbierto = true"
+      class="rounded-full bg-black px-3 py-1.5 text-xs font-semibold text-white"
+    >
+      + Nuevo
+    </button>
+  </div>
+
+  <p *ngIf="cargando" class="text-sm text-black/40">Cargando…</p>
+  <p *ngIf="!cargando && eventos.length === 0" class="text-sm text-black/40">Todavía no hay eventos cargados.</p>
+
+  <div *ngFor="let evento of eventos" class="rounded-xl border border-plata-200 bg-white p-4">
+    <div class="mb-2 flex items-start justify-between">
+      <div>
+        <p class="font-medium">{{ evento.nombre }}</p>
+        <p class="text-xs text-black/40">{{ evento.fecha }} · {{ evento.horaInicio }} a {{ evento.horaFin }}</p>
+      </div>
+      <app-badge [texto]="badgeEstado(evento.estado).texto" [tono]="badgeEstado(evento.estado).tono" />
+    </div>
+
+    <p class="mb-3 text-xs text-black/50">{{ activosEnEvento(evento.id) }} activos para este evento</p>
+
+    <div class="flex gap-2">
+      <button
+        *ngIf="evento.estado !== 'finalizado'"
+        (click)="toggleActivacion(evento)"
+        class="flex-1 rounded-lg border py-2 text-xs font-medium transition"
+        [ngClass]="estoyActivo(evento.id) ? 'border-plata-500 text-plata-700 bg-plata-50' : 'border-plata-200 text-black/60'"
+      >
+        {{ estoyActivo(evento.id) ? 'Estoy activo — tocar para salir' : 'Marcarme disponible' }}
+      </button>
+
+      <button
+        *ngIf="puedeCrear && evento.estado !== 'finalizado'"
+        (click)="finalizar(evento)"
+        class="rounded-lg border border-plata-200 px-3 py-2 text-xs text-black/50"
+      >
+        Finalizar
+      </button>
+
+      <button
+        *ngIf="puedeCrear && evento.estado === 'finalizado'"
+        (click)="reactivar(evento)"
+        class="flex-1 rounded-lg border border-plata-400 py-2 text-xs font-medium text-plata-700"
+      >
+        Reactivar
+      </button>
+    </div>
+  </div>
+</div>
+
+<app-modal [abierto]="modalAbierto" titulo="Nuevo evento" (cerrar)="modalAbierto = false">
+  <form [formGroup]="form" (ngSubmit)="crear()" class="space-y-3">
+    <div>
+      <label class="mb-1 block text-xs text-black/50">Nombre</label>
+      <input formControlName="nombre" class="w-full rounded-lg border border-plata-300 bg-white px-3 py-2 text-sm outline-none focus:border-plata-500" />
+    </div>
+    <div>
+      <label class="mb-1 block text-xs text-black/50">Fecha</label>
+      <input type="date" formControlName="fecha" class="w-full rounded-lg border border-plata-300 bg-white px-3 py-2 text-sm outline-none focus:border-plata-500" />
+    </div>
+    <div class="flex gap-3">
+      <div class="flex-1">
+        <label class="mb-1 block text-xs text-black/50">Hora inicio</label>
+        <input type="time" formControlName="horaInicio" class="w-full rounded-lg border border-plata-300 bg-white px-3 py-2 text-sm outline-none focus:border-plata-500" />
+      </div>
+      <div class="flex-1">
+        <label class="mb-1 block text-xs text-black/50">Hora fin</label>
+        <input type="time" formControlName="horaFin" class="w-full rounded-lg border border-plata-300 bg-white px-3 py-2 text-sm outline-none focus:border-plata-500" />
+      </div>
+    </div>
+    <button type="submit" class="w-full rounded-lg bg-black py-2.5 text-sm font-semibold text-white">
+      Crear evento
+    </button>
+  </form>
+</app-modal>

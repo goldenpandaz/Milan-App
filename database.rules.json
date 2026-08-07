@@ -1,0 +1,39 @@
+{
+  "rules": {
+    ".read": "auth != null && root.child('usuarios').child(auth.uid).exists()",
+    ".write": false,
+
+    "usuarios": {
+      "$uid": {
+        ".write": "auth != null && (((!data.exists()) && (newData.child('rol').val() === null) && (newData.child('estado').val() === 'pendiente')) || (root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador'))"
+      }
+    },
+
+    "eventos": {
+      "$eventoId": {
+        "info": {
+          ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero')"
+        },
+
+        "participantes": {
+          "$uid": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero')"
+          }
+        },
+
+        "tareas": {
+          "$tareaId": {
+            ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero') || (auth.uid === data.child('asignadoA').val() && newData.child('asignadoA').val() === data.child('asignadoA').val() && newData.child('titulo').val() === data.child('titulo').val() && newData.child('tipo').val() === data.child('tipo').val() && newData.child('creadoPor').val() === data.child('creadoPor').val()))"
+          }
+        },
+
+        "inventario": {
+          "$itemId": {
+            ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || root.child('eventos').child($eventoId).child('info').child('desmontajeAsignadoA').val() === auth.uid)",
+            ".validate": "root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || newData.child('confirmadoPorAdmin').val() === false"
+          }
+        }
+      }
+    }
+  }
+}

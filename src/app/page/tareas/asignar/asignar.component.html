@@ -1,0 +1,136 @@
+<div class="space-y-5">
+  <div class="flex items-center justify-between">
+    <h1 class="text-lg font-semibold">Asignar tareas</h1>
+    <button
+      *ngIf="!cargando && evento && asignadas.length > 0"
+      (click)="modalDesasignarAbierto = true"
+      class="text-xs text-red-600 underline"
+    >
+      Desasignar todas
+    </button>
+  </div>
+
+  <p *ngIf="cargando" class="text-sm text-black/40">Cargando…</p>
+  <div *ngIf="!cargando && !evento" class="rounded-xl border border-plata-200 bg-white p-4 text-sm text-black/40">
+    No hay un evento activo todavía.
+  </div>
+
+  <ng-container *ngIf="!cargando && evento">
+    <div *ngIf="sinAsignar.length > 0" class="rounded-xl border border-plata-300 bg-plata-50 p-3">
+      <p class="mb-1 text-xs font-medium text-plata-700">{{ sinAsignar.length }} tarea(s) sin asignar</p>
+    </div>
+
+    <div>
+      <p class="mb-2 text-xs uppercase tracking-wide text-black/40">Equipo activo — carga de trabajo</p>
+      <div *ngFor="let p of participantes" class="mb-2 flex items-center gap-3">
+        <span class="w-24 shrink-0 truncate text-xs text-black/70">{{ p.nombre }}</span>
+        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-black/10">
+          <div class="h-full rounded-full bg-plata-500" [style.width.%]="cargaDe(p.uid)"></div>
+        </div>
+        <span class="w-9 text-right text-[11px] text-black/40">{{ cargaDe(p.uid) }}%</span>
+      </div>
+      <p *ngIf="participantes.length === 0" class="text-sm text-black/40">Nadie se marcó disponible todavía.</p>
+    </div>
+
+    <div class="flex rounded-lg border border-plata-200 p-1 text-sm">
+      <button
+        (click)="cambiarModo('mesero')"
+        class="flex-1 rounded-md py-1.5 transition"
+        [ngClass]="modo === 'mesero' ? 'bg-black text-white' : 'text-black/60'"
+      >
+        Mi equipo
+      </button>
+      <button
+        (click)="cambiarModo('tarea')"
+        class="flex-1 rounded-md py-1.5 transition"
+        [ngClass]="modo === 'tarea' ? 'bg-black text-white' : 'text-black/60'"
+      >
+        Por tarea
+      </button>
+    </div>
+
+    <!-- Por tarea: elige, por cada tarea, a quién se la asigna -->
+    <div *ngIf="modo === 'tarea'">
+      <p class="mb-2 text-xs uppercase tracking-wide text-black/40">Tareas</p>
+      <div *ngFor="let tarea of tareas" class="mb-2 rounded-xl border border-plata-200 bg-white p-3">
+        <div class="mb-2 flex items-center justify-between">
+          <p class="text-sm" [ngClass]="tarea.estado === 'hecho' ? 'line-through text-black/40' : ''">{{ tarea.titulo }}</p>
+          <div class="flex shrink-0 gap-1.5">
+            <app-badge [texto]="tarea.tipo" tono="neutro" />
+            <app-badge [texto]="tarea.estado === 'hecho' ? 'Hecho' : 'Pendiente'" [tono]="tarea.estado === 'hecho' ? 'ok' : 'alerta'" />
+          </div>
+        </div>
+        <select
+          [ngModel]="tarea.asignadoA"
+          (ngModelChange)="asignar(tarea, $event)"
+          class="w-full rounded-lg border border-plata-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-plata-500"
+        >
+          <option [ngValue]="null">Sin asignar</option>
+          <option *ngFor="let p of participantes" [ngValue]="p.uid">{{ p.nombre }}</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Mi equipo: elige un mesero y le tilda todas las tareas sin asignar que quiera darle -->
+    <div *ngIf="modo === 'mesero'">
+      <p class="mb-2 text-xs uppercase tracking-wide text-black/40">Elige un mesero</p>
+      <div class="mb-4 flex flex-wrap gap-2">
+        <button
+          *ngFor="let p of participantes"
+          (click)="elegirMesero(p.uid)"
+          class="rounded-full border px-3 py-1.5 text-xs font-medium transition"
+          [ngClass]="meseroSeleccionado === p.uid ? 'border-plata-500 bg-plata-50 text-plata-700' : 'border-plata-200 text-black/60'"
+        >
+          {{ p.nombre }}
+        </button>
+        <p *ngIf="participantes.length === 0" class="text-sm text-black/40">Nadie se marcó disponible todavía.</p>
+      </div>
+
+      <ng-container *ngIf="meseroSeleccionado">
+        <p *ngIf="sinAsignar.length === 0" class="text-sm text-black/40">No quedan tareas sin asignar.</p>
+
+        <div *ngFor="let tarea of sinAsignar" (click)="toggleSeleccion(tarea.id)" class="mb-2 flex items-center gap-3 rounded-xl border border-plata-200 bg-white p-3">
+          <div
+            class="flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[10px]"
+            [ngClass]="estaSeleccionada(tarea.id) ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-plata-300'"
+          >
+            {{ estaSeleccionada(tarea.id) ? '✓' : '' }}
+          </div>
+          <p class="flex-1 text-sm">{{ tarea.titulo }}</p>
+          <app-badge [texto]="tarea.tipo" tono="neutro" />
+        </div>
+
+        <button
+          *ngIf="sinAsignar.length > 0"
+          (click)="asignarSeleccionadas()"
+          [disabled]="seleccionadas.size === 0 || asignando"
+          class="mt-2 w-full rounded-lg bg-black py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+        >
+          {{ asignando ? 'Asignando…' : 'Asignar ' + seleccionadas.size + ' tarea(s)' }}
+        </button>
+      </ng-container>
+    </div>
+  </ng-container>
+</div>
+
+<app-modal [abierto]="modalDesasignarAbierto" titulo="Desasignar todas las tareas" (cerrar)="modalDesasignarAbierto = false">
+  <p class="mb-4 text-sm text-black/70">
+    Esto va a dejar sin mesero a las <strong>{{ asignadas.length }}</strong> tarea(s) asignadas de este evento.
+    <span class="text-red-600">No se puede revertir</span> — vas a tener que volver a asignarlas una por una.
+  </p>
+  <div class="flex gap-2">
+    <button
+      (click)="modalDesasignarAbierto = false"
+      class="flex-1 rounded-lg border border-plata-300 py-2.5 text-sm font-medium text-black/70"
+    >
+      Cancelar
+    </button>
+    <button
+      (click)="desasignarTodas()"
+      [disabled]="desasignando"
+      class="flex-1 rounded-lg bg-red-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+    >
+      {{ desasignando ? 'Desasignando…' : 'Sí, desasignar todo' }}
+    </button>
+  </div>
+</app-modal>

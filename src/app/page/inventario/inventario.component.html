@@ -1,0 +1,55 @@
+<div class="space-y-4">
+  <h1 class="text-lg font-semibold">Inventario — desmontaje</h1>
+
+  <p *ngIf="cargando" class="text-sm text-black/40">Cargando…</p>
+  <div *ngIf="!cargando && !evento" class="rounded-xl border border-plata-200 bg-white p-4 text-sm text-black/40">
+    No hay un evento activo todavía.
+  </div>
+
+  <ng-container *ngIf="!cargando && evento">
+    <form *ngIf="!esAdmin" [formGroup]="form" (ngSubmit)="agregar()" class="space-y-2 rounded-xl border border-plata-200 bg-white p-3">
+      <div class="flex gap-2">
+        <input
+          formControlName="nombre"
+          placeholder="Ítem…"
+          class="flex-1 rounded-lg border border-plata-300 bg-white px-3 py-2 text-sm outline-none focus:border-plata-500"
+        />
+        <input
+          type="number"
+          formControlName="cantidad"
+          class="w-16 rounded-lg border border-plata-300 bg-white px-2 py-2 text-sm outline-none focus:border-plata-500"
+        />
+      </div>
+      <input
+        formControlName="nota"
+        placeholder="Nota (opcional)"
+        class="w-full rounded-lg border border-plata-300 bg-white px-3 py-2 text-sm outline-none focus:border-plata-500"
+      />
+      <label class="flex items-center gap-2 text-xs text-black/60">
+        <input type="checkbox" formControlName="falta" class="accent-red-600" />
+        Falta / está incompleto
+      </label>
+      <button type="submit" class="w-full rounded-lg bg-black py-2 text-sm font-semibold text-white">Cargar ítem</button>
+    </form>
+
+    <p *ngIf="items.length === 0" class="text-sm text-black/40">Todavía no se cargó el inventario.</p>
+
+    <div *ngFor="let item of items" class="flex items-center justify-between rounded-xl border border-plata-200 bg-white p-3">
+      <div>
+        <p class="text-sm">{{ item.nombre }} <span class="text-black/40">× {{ item.cantidad }}</span></p>
+        <p *ngIf="item.nota" class="text-xs text-black/40">{{ item.nota }}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <app-badge [texto]="item.falta ? 'Falta' : 'OK'" [tono]="item.falta ? 'alerta' : 'ok'" />
+        <button
+          *ngIf="esAdmin"
+          (click)="confirmar(item)"
+          class="flex h-6 w-6 items-center justify-center rounded-full border text-xs"
+          [ngClass]="item.confirmadoPorAdmin ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-plata-300'"
+        >
+          ✓
+        </button>
+      </div>
+    </div>
+  </ng-container>
+</div>

@@ -1,0 +1,15 @@
+# Elimina por completo la carpeta 'dist' para asegurarte de que el nuevo build sea limpio
+Remove-Item -Recurse -Force .\dist
+
+
+# Compila el proyecto Angular en modo producción
+ng build
+
+
+# Publica el contenido de 'dist/milan-app/browser' directamente al branch 'gh-pages' de GitHub
+# (el target "deploy" ya está configurado en angular.json con ese "dir", por eso alcanza con "ng deploy")
+ng deploy --base-href=/Milan-App/
+
+
+# Alternativa manual, equivalente a la de arriba pero sin usar el target configurado:
+npx angular-cli-ghpages --dir=dist/milan-app/browser
