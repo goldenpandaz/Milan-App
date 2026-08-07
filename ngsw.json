@@ -1,0 +1,123 @@
+{
+  "configVersion": 1,
+  "timestamp": 1786131197489,
+  "index": "/Milan-App/index.csr.html",
+  "assetGroups": [
+    {
+      "name": "app",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": {
+        "ignoreVary": true
+      },
+      "urls": [
+        "/Milan-App/chunk-2CNBCGM5.js",
+        "/Milan-App/chunk-2LGR4PF4.js",
+        "/Milan-App/chunk-5TQ7SHXO.js",
+        "/Milan-App/chunk-6UYIB6HC.js",
+        "/Milan-App/chunk-A7ZPQ4KT.js",
+        "/Milan-App/chunk-BRHOO7H5.js",
+        "/Milan-App/chunk-DIC5URSR.js",
+        "/Milan-App/chunk-GUIGCU3I.js",
+        "/Milan-App/chunk-H3IDNM5S.js",
+        "/Milan-App/chunk-HQCZV2HG.js",
+        "/Milan-App/chunk-I2NR3LZ2.js",
+        "/Milan-App/chunk-JIOPKJGG.js",
+        "/Milan-App/chunk-JYSVCARA.js",
+        "/Milan-App/chunk-LG6OSP5I.js",
+        "/Milan-App/chunk-NPZC6MEH.js",
+        "/Milan-App/chunk-NSV7MFMA.js",
+        "/Milan-App/chunk-O6ZFRHXE.js",
+        "/Milan-App/chunk-WKQDC7GP.js",
+        "/Milan-App/chunk-XZF7YVPS.js",
+        "/Milan-App/favicon.ico",
+        "/Milan-App/index.csr.html",
+        "/Milan-App/index.html",
+        "/Milan-App/main-F5E4HTQA.js",
+        "/Milan-App/manifest.webmanifest",
+        "/Milan-App/polyfills-FFHMD2TL.js",
+        "/Milan-App/styles-KWIIHZJU.css"
+      ],
+      "patterns": []
+    },
+    {
+      "name": "assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": {
+        "ignoreVary": true
+      },
+      "urls": [
+        "/Milan-App/branding/logo-milan.png",
+        "/Milan-App/icons/apple-touch-icon.png",
+        "/Milan-App/icons/icon-128x128.png",
+        "/Milan-App/icons/icon-144x144.png",
+        "/Milan-App/icons/icon-152x152.png",
+        "/Milan-App/icons/icon-192x192.png",
+        "/Milan-App/icons/icon-384x384.png",
+        "/Milan-App/icons/icon-512x512.png",
+        "/Milan-App/icons/icon-72x72.png",
+        "/Milan-App/icons/icon-96x96.png"
+      ],
+      "patterns": []
+    }
+  ],
+  "dataGroups": [],
+  "hashTable": {
+    "/Milan-App/branding/logo-milan.png": "17ed24c5b60ecf59e035c424e49852d4c1307037",
+    "/Milan-App/chunk-2CNBCGM5.js": "174851601e3c3299b48a6929da74f746cd2c6f9b",
+    "/Milan-App/chunk-2LGR4PF4.js": "b523359eb4c192a7aabfe47907fa15908c4f1d6a",
+    "/Milan-App/chunk-5TQ7SHXO.js": "9248641c0f0b9f1ff511b14a8fc90b313002b16c",
+    "/Milan-App/chunk-6UYIB6HC.js": "6f99bfb7240792984f0c109083fe368c178a2183",
+    "/Milan-App/chunk-A7ZPQ4KT.js": "44b6a8f6e37620b13ec91eeef03b7b9ca34586ea",
+    "/Milan-App/chunk-BRHOO7H5.js": "e4300b9023c6e0235a230db8732515ecb7b263fb",
+    "/Milan-App/chunk-DIC5URSR.js": "e387c56e46ae93d686f05885d206341347af2d49",
+    "/Milan-App/chunk-GUIGCU3I.js": "d640895f031fe2a9b0a174b3ddcf40997ecb34f7",
+    "/Milan-App/chunk-H3IDNM5S.js": "87634648e95b8fc1060d6e24380d6432391c8d7d",
+    "/Milan-App/chunk-HQCZV2HG.js": "c5670ebac1c27383b106aea4cad5ebbf7998b2ba",
+    "/Milan-App/chunk-I2NR3LZ2.js": "7031232f38058ca17be27c4169bdf6f48f7d4a73",
+    "/Milan-App/chunk-JIOPKJGG.js": "75de79b83c04cbad0cc0aff674f794b3ba45cfc9",
+    "/Milan-App/chunk-JYSVCARA.js": "26549afd34042056b32ea8e171705370aa75b5dc",
+    "/Milan-App/chunk-LG6OSP5I.js": "06531a67c06f39ab15a3068e814e95fe25ef2aef",
+    "/Milan-App/chunk-NPZC6MEH.js": "29c8fddfa257c61f5a1d5b7a22cb9475f9c888f5",
+    "/Milan-App/chunk-NSV7MFMA.js": "3e62c6988cbbff773883f291e4e31737e4bd8c06",
+    "/Milan-App/chunk-O6ZFRHXE.js": "73836293b3786752a2ea3a5c4f0e42ce6b6f5c69",
+    "/Milan-App/chunk-WKQDC7GP.js": "9fe994d6dbad373269a16253c8191cacb193ec53",
+    "/Milan-App/chunk-XZF7YVPS.js": "c9a8cfb6d4507a03ce8508772077ad8cff3a7db5",
+    "/Milan-App/favicon.ico": "2ecb2dfc7f6614602e4090f4075783f32848e69e",
+    "/Milan-App/icons/apple-touch-icon.png": "add55c0acde1f99b8cfd2af95171934d379f59b6",
+    "/Milan-App/icons/icon-128x128.png": "43c6586d344501cade974d5ad7a421d71ecb1b6c",
+    "/Milan-App/icons/icon-144x144.png": "5ee0a8e3a8c23b135d00f4d772c8d8ac40f7e318",
+    "/Milan-App/icons/icon-152x152.png": "1d5ecc581465cdb8cd8020dadf7cdd4af706c3c2",
+    "/Milan-App/icons/icon-192x192.png": "f97df0bec08667d67f9c60b2f77ce2b7449800b4",
+    "/Milan-App/icons/icon-384x384.png": "297658333c473ab1f8ebda8d4216717216064d14",
+    "/Milan-App/icons/icon-512x512.png": "85421872e416248a03c3c9e633504fe350ef49e9",
+    "/Milan-App/icons/icon-72x72.png": "477dd7300b22d42e533b464549c1c2f57ef9ae9d",
+    "/Milan-App/icons/icon-96x96.png": "604a63be691708aa2ffeb965b5de6c6adc179d48",
+    "/Milan-App/index.csr.html": "1a82cc3f20957ecfc4840e07674cf274d5741b76",
+    "/Milan-App/index.html": "e3de40e0dc294c77b9596b18482669119e35b6a0",
+    "/Milan-App/main-F5E4HTQA.js": "6c50f17130933ad465bb4218c997de3335f8ea60",
+    "/Milan-App/manifest.webmanifest": "9333e0053442800b24ca47176515c722941e6d3a",
+    "/Milan-App/polyfills-FFHMD2TL.js": "f49b49a155bc7d192db62a4c15d0a612b460a667",
+    "/Milan-App/styles-KWIIHZJU.css": "df463a285126ae83c43065c7a1b88ef9d459d3fa"
+  },
+  "navigationUrls": [
+    {
+      "positive": true,
+      "regex": "^\\/.*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*\\.[^/]*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*__[^/]*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*__[^/]*\\/.*$"
+    }
+  ],
+  "navigationRequestStrategy": "performance"
+}
