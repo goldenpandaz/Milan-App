@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────
+# Comandos para desplegar Milan-App
+# Ejecutar desde la raíz del proyecto (Milan-App)
+# ─────────────────────────────────────────────
+
+
+## 1) Reglas de la base de datos (Firebase Realtime Database)
+# Sube database.rules.json al proyecto real de Firebase.
+# Requiere estar logueado una vez: npx firebase-tools login
+npx firebase-tools deploy --only database --project milan-app-f4beb
+
+
+## 2) Build de producción (Angular)
+Remove-Item -Recurse -Force .\dist
+ng build
+
+
+## 3) Deploy del front a GitHub Pages
+# El target "deploy" de angular.json ya usa dist/milan-app/browser como carpeta.
+ng deploy --base-href=/Milan-App/
+
+# Alternativa manual, equivalente, sin usar el target configurado:
+npx angular-cli-ghpages --dir=dist/milan-app/browser
+
+
+## 4) Subir el código (git) a GitHub
+git push -u origin feat/milan-single-salon-setup
+
+# Si tira error de permisos (403 / "no tenés acceso"):
+# estás logueado en Git con la cuenta equivocada, no con la dueña de goldenpandaz/Milan-App.
+# Revisá qué cuenta está guardada:
+git config user.email
+# Y las credenciales cacheadas de Windows: buscá "Administrador de credenciales" en el
+# menú de inicio → Credenciales de Windows → borrá la entrada "git:https://github.com"
+# para que te vuelva a pedir usuario/contraseña (o token) la próxima vez que hagas push.
+
+
+## 5) Crear el Pull Request (una vez pusheada la rama)
+gh pr create --fill --base main
