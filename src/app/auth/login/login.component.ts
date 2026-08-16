@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
+import { PwaInstallService } from '../../core/pwa-install.service';
 
 @Component({
   selector: 'app-login',
@@ -15,10 +16,12 @@ export default class LoginComponent implements OnInit {
   cargando = false;
   error = '';
 
-  canInstallApp = false;
   appInstalled = false;
   installHelpVisible = false;
-  private deferredPrompt: any = null;
+
+  get canInstallApp(): boolean {
+    return this.pwaInstallService.canInstall();
+  }
 
   get isIos(): boolean {
     return typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -33,7 +36,12 @@ export default class LoginComponent implements OnInit {
     return !this.appInstalled && !this.isIos && !this.canInstallApp;
   }
 
-  constructor(private fb: FormBuilder, private authService: AuthService, private router: Router) {
+  constructor(
+    private fb: FormBuilder,
+    private authService: AuthService,
+    private router: Router,
+    private pwaInstallService: PwaInstallService
+  ) {
     this.form = this.fb.group({
       email: ['', [Validators.required, Validators.email]],
       password: ['', [Validators.required, Validators.minLength(6)]],
@@ -44,28 +52,14 @@ export default class LoginComponent implements OnInit {
     if (typeof window === 'undefined') return;
 
     this.appInstalled = window.matchMedia('(display-mode: standalone)').matches;
-
-    window.addEventListener('beforeinstallprompt', (event: Event) => {
-      event.preventDefault();
-      this.deferredPrompt = event;
-      this.canInstallApp = true;
-    });
-
-    window.addEventListener('appinstalled', () => {
-      this.appInstalled = true;
-      this.canInstallApp = false;
-    });
   }
 
   async instalarApp(): Promise<void> {
-    if (!this.deferredPrompt) {
+    if (!this.canInstallApp) {
       this.installHelpVisible = true;
       return;
     }
-    this.deferredPrompt.prompt();
-    await this.deferredPrompt.userChoice;
-    this.deferredPrompt = null;
-    this.canInstallApp = false;
+    await this.pwaInstallService.install();
   }
 
   invalido(campo: string): boolean {
@@ -80,6 +74,26 @@ export default class LoginComponent implements OnInit {
     const { email, password } = this.form.value;
 
     this.authService.login(email, password).subscribe({
+      next: (sesion) => {
+        this.cargando = false;
+        this.router.navigate([sesion.estado === 'pendiente' ? '/pendiente' : '/app']);
+      },
+      error: (mensaje) => {
+        this.cargando = false;
+        this.error = mensaje;
+      },
+    });
+  }
+
+  /**
+   * Google Sign-In con popup.
+   * Abre el popup de autenticación de Google.
+   */
+  onLoginWithGoogle(): void {
+    this.cargando = true;
+    this.error = '';
+
+    this.authService.loginWithGoogle().subscribe({
       next: (sesion) => {
         this.cargando = false;
         this.router.navigate([sesion.estado === 'pendiente' ? '/pendiente' : '/app']);

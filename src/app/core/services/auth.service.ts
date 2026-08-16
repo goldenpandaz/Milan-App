@@ -1,11 +1,23 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, lastValueFrom, throwError } from 'rxjs';
+import { Observable, lastValueFrom, throwError, of, from } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
+import { Auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup } from '@angular/fire/auth';
 import { environment } from '../../../environments/environment';
 import { Sesion } from '../models/dominio.models';
 
+/**
+ * SECURITY: Using sessionStorage instead of localStorage
+ * - sessionStorage: cleared when tab closes, not shared across tabs
+ * - localStorage: persistent across tabs (XSS vectors)
+ *
+ * IDEAL: Use httpOnly cookies with backend proxy for Firebase tokens
+ * - Prevents XSS from accessing tokens
+ * - Requires backend to handle token refresh
+ * See: https://owasp.org/www-community/attacks/xss/
+ */
 const SESSION_KEY = 'milan_sesion';
+const SESSION_STORAGE_TYPE = 'sessionStorage'; // Use 'localStorage' only if necessary
 /** Refrescar un poco antes de que venza, para no arriesgarnos a que expire a mitad de un request. */
 const MARGEN_REFRESCO_MS = 5 * 60 * 1000;
 
@@ -25,17 +37,30 @@ interface RefreshTokenResponse {
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private identityUrl = 'https://identitytoolkit.googleapis.com/v1/accounts';
   private dbUrl = environment.firebase.databaseURL;
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private auth: Auth) {}
 
   // ---------- Sesión local ----------
 
+  /**
+   * Get session from storage. Validates token expiration.
+   * SECURITY: Uses sessionStorage (cleared on tab close) over localStorage (persistent)
+   */
   getSession(): Sesion | null {
     if (typeof window === 'undefined') return null;
-    const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as Sesion) : null;
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+
+    const sesion = JSON.parse(raw) as Sesion;
+
+    // Validate token not expired (fail safe: if expiration is in the past, session is invalid)
+    if (sesion.expiraEn <= Date.now()) {
+      this.logout();
+      return null;
+    }
+
+    return sesion;
   }
 
   isLoggedIn(): boolean {
@@ -80,12 +105,18 @@ export class AuthService {
 
   logout(): void {
     if (typeof window === 'undefined') return;
-    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+    // TODO: If using httpOnly cookies, issue logout to backend to clear cookies
   }
 
+  /**
+   * Save session to storage (sessionStorage for better XSS protection).
+   * SECURITY: sessionStorage is cleared when tab closes, not accessible to other tabs
+   * TODO: Migrate to httpOnly cookies + backend session for maximum security
+   */
   private guardarSesion(sesion: Sesion): void {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(SESSION_KEY, JSON.stringify(sesion));
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(sesion));
   }
 
   // ---------- Login ----------
@@ -96,7 +127,53 @@ export class AuthService {
     );
   }
 
-  /** Vuelve a leer rol/estado (ej: después de que el admin aprueba a alguien). */
+  /**
+   * Google Sign-In con popup.
+   * Abre el popup de autenticación de Google, obtiene el idToken, y guarda la sesión.
+   * SECURITY: Uses sessionStorage for token storage
+   */
+  loginWithGoogle(): Observable<Sesion> {
+    return from(this.signInWithGooglePopup()).pipe(
+      switchMap((auth) => this.cargarPerfilYGuardar(auth))
+    );
+  }
+
+  private async signInWithGooglePopup(): Promise<IdentityToolkitResponse> {
+    try {
+      const provider = new GoogleAuthProvider();
+
+      // Usar el Auth inyectado en lugar de inicializar
+      const result = await signInWithPopup(this.auth, provider);
+      const user = result.user;
+
+      // Obtener el idToken
+      const idToken = await user.getIdToken();
+      const refreshToken = user.refreshToken || '';
+
+      // Convertir la respuesta al formato IdentityToolkitResponse para reutilizar cargarPerfilYGuardar
+      return {
+        idToken,
+        refreshToken,
+        localId: user.uid,
+        email: user.email || '',
+        expiresIn: '3600', // Firebase devuelve tokens con 1h de vida
+      };
+    } catch (error: any) {
+      // Manejar errores del popup (ej: usuario canceló)
+      if (error.code === 'auth/popup-closed-by-user') {
+        throw new Error('El popup fue cerrado. Intenta de nuevo.');
+      }
+      if (error.code === 'auth/popup-blocked') {
+        throw new Error('El popup fue bloqueado. Verifica la configuración del navegador.');
+      }
+      if (error.code === 'auth/cancelled-popup-request') {
+        throw new Error('La solicitud de popup fue cancelada.');
+      }
+      throw new Error('Error al iniciar sesión con Google. Intenta de nuevo.');
+    }
+  }
+
+  /** Vuelve a leer rol/estado del negocio (ej: después de que el admin aprueba a alguien). */
   refrescarSesion(): Observable<Sesion> {
     const sesion = this.getSession();
     if (!sesion) return throwError(() => 'No hay sesión activa');
@@ -154,19 +231,51 @@ export class AuthService {
     );
   }
 
-  // ---------- Identity Toolkit ----------
+  // ---------- Authentication (Firebase SDK) ----------
 
+  /**
+   * Migrado de Identity Toolkit REST a Firebase SDK moderno.
+   * Beneficios:
+   * - Built-in automatic token refresh
+   * - Better error handling y mensajes tipados
+   * - Type-safe API
+   * - Soporta múltiples métodos de auth (Google, Apple, etc.)
+   */
   private signIn(email: string, password: string): Observable<IdentityToolkitResponse> {
-    const url = `${this.identityUrl}:signInWithPassword?key=${environment.firebase.apiKey}`;
-    return this.http.post<IdentityToolkitResponse>(url, { email, password, returnSecureToken: true }).pipe(
-      catchError((err) => throwError(() => this.mensajeError(err)))
+    return from(signInWithEmailAndPassword(this.auth, email, password)).pipe(
+      switchMap(async (userCredential) => {
+        const user = userCredential.user;
+        const idToken = await user.getIdToken();
+        const refreshToken = user.refreshToken || '';
+
+        return {
+          idToken,
+          refreshToken,
+          localId: user.uid,
+          email: user.email || '',
+          expiresIn: '3600', // Firebase devuelve tokens con 1h de vida
+        } as IdentityToolkitResponse;
+      }),
+      catchError((err) => throwError(() => this.mensajeErrorFirebase(err)))
     );
   }
 
   private signUp(email: string, password: string): Observable<IdentityToolkitResponse> {
-    const url = `${this.identityUrl}:signUp?key=${environment.firebase.apiKey}`;
-    return this.http.post<IdentityToolkitResponse>(url, { email, password, returnSecureToken: true }).pipe(
-      catchError((err) => throwError(() => this.mensajeError(err)))
+    return from(createUserWithEmailAndPassword(this.auth, email, password)).pipe(
+      switchMap(async (userCredential) => {
+        const user = userCredential.user;
+        const idToken = await user.getIdToken();
+        const refreshToken = user.refreshToken || '';
+
+        return {
+          idToken,
+          refreshToken,
+          localId: user.uid,
+          email: user.email || '',
+          expiresIn: '3600',
+        } as IdentityToolkitResponse;
+      }),
+      catchError((err) => throwError(() => this.mensajeErrorFirebase(err)))
     );
   }
 
@@ -207,6 +316,32 @@ export class AuthService {
 
   private expiraEnDe(auth: IdentityToolkitResponse): number {
     return Date.now() + Number(auth.expiresIn) * 1000;
+  }
+
+  /**
+   * Manejo de errores del SDK moderno de Firebase.
+   * Los códigos de error de Firebase SDK son diferentes a los de Identity Toolkit REST.
+   */
+  private mensajeErrorFirebase(err: any): string {
+    const codigo = err?.code;
+    switch (codigo) {
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+      case 'auth/invalid-credential':
+        return 'Correo o contraseña incorrectos.';
+      case 'auth/email-already-in-use':
+        return 'Ya existe una cuenta con ese correo.';
+      case 'auth/user-disabled':
+        return 'Este usuario fue deshabilitado.';
+      case 'auth/weak-password':
+        return 'La contraseña debe tener al menos 6 caracteres.';
+      case 'auth/too-many-requests':
+        return 'Demasiados intentos fallidos. Intenta más tarde.';
+      case 'auth/operation-not-allowed':
+        return 'Operación no permitida. Contacta con el soporte.';
+      default:
+        return 'Ocurrió un error inesperado. Intenta de nuevo.';
+    }
   }
 
   private mensajeError(err: any): string {
