@@ -1,19 +1,44 @@
 {
   "rules": {
-    ".read": "auth != null && root.child('usuarios').child(auth.uid).exists()",
+    ".read": "auth != null && root.child('usuarios').child(auth.uid).child('estado').val() === 'activo'",
     ".write": false,
 
     "usuarios": {
       "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && ((auth.uid === $uid && !data.exists() && newData.child('rol').val() === 'mesero' && newData.child('estado').val() === 'activo') || root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador')",
-        ".validate": "(newData.child('rol').val() === 'administrador' || newData.child('rol').val() === 'jefe_mesero' || newData.child('rol').val() === 'mesero') && newData.child('estado').val() === 'activo'"
+        ".validate": "(newData.child('rol').val() === 'administrador' || newData.child('rol').val() === 'jefe_mesero' || newData.child('rol').val() === 'mesero') && (newData.child('estado').val() === 'activo' || newData.child('estado').val() === 'inactivo')"
+      }
+    },
+
+    "catalogo": {
+      ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero')",
+      "cargos": {
+        "$cargoId": {
+          ".validate": "newData.hasChildren(['nombre', 'tipo', 'orden'])",
+          "nombre": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60" },
+          "tipo": { ".validate": "newData.val() === 'mesero' || newData.val() === 'portero' || newData.val() === 'desmontaje' || newData.val() === 'libre'" },
+          "orden": { ".validate": "newData.isNumber()" },
+          "actualizadoPor": { ".validate": "newData.isString()" },
+          "actualizadoEn": { ".validate": "newData.isNumber()" },
+          "tareas": {
+            "$tareaId": {
+              "titulo": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120" },
+              "orden": { ".validate": "newData.isNumber()" },
+              "$other": { ".validate": false }
+            }
+          },
+          "$other": { ".validate": false }
+        }
       }
     },
 
     "eventos": {
       "$eventoId": {
+        ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador'",
+
         "info": {
-          ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero')"
+          ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || (root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && newData.exists()))"
         },
 
         "participantes": {
