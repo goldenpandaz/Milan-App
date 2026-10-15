@@ -16,7 +16,7 @@ export function rolGuard(...rolesPermitidos: Rol[]): CanActivateFn {
     const sesion = authService.getSession();
 
     if (!sesion || sesion.estado !== 'activo' || !sesion.rol) {
-      router.navigate(['/pendiente']);
+      router.navigate(['/login']);
       return false;
     }
 

@@ -1,9 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { UserService } from '../../../core/services/user.service';
+import { RolAsignable, UserService } from '../../../core/services/user.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { Rol, Usuario } from '../../../core/models/dominio.models';
+import { Usuario } from '../../../core/models/dominio.models';
 import { BadgeComponent } from '../../../shared/components/badge/badge.component';
 
 @Component({
@@ -34,11 +34,8 @@ export default class EquipoComponent implements OnInit {
     });
   }
 
-  cambiarRol(usuario: Usuario, rol: Rol): void {
+  cambiarRol(usuario: Usuario, rol: RolAsignable): void {
+    if (usuario.rol === 'administrador') return;
     this.userService.asignarRol(usuario.uid, rol).subscribe(() => this.cargar());
-  }
-
-  quitarAcceso(usuario: Usuario): void {
-    this.userService.quitarAcceso(usuario.uid).subscribe(() => this.cargar());
   }
 }

@@ -4,7 +4,7 @@ import { Observable, lastValueFrom, throwError, of, from } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 import { Auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup } from '@angular/fire/auth';
 import { environment } from '../../../environments/environment';
-import { Sesion } from '../models/dominio.models';
+import { EstadoUsuario, Sesion } from '../models/dominio.models';
 
 /**
  * SECURITY: Using sessionStorage instead of localStorage
@@ -134,6 +134,7 @@ export class AuthService {
    */
   loginWithGoogle(): Observable<Sesion> {
     return from(this.signInWithGooglePopup()).pipe(
+      switchMap((auth) => this.crearPerfilSiFalta(auth)),
       switchMap((auth) => this.cargarPerfilYGuardar(auth))
     );
   }
@@ -173,7 +174,7 @@ export class AuthService {
     }
   }
 
-  /** Vuelve a leer rol/estado del negocio (ej: después de que el admin aprueba a alguien). */
+  /** Vuelve a leer rol/estado del negocio (ej: después de que el admin cambia un rol). */
   refrescarSesion(): Observable<Sesion> {
     const sesion = this.getSession();
     if (!sesion) return throwError(() => 'No hay sesión activa');
@@ -189,9 +190,9 @@ export class AuthService {
   // ---------- Registro ----------
 
   /**
-   * Alta directa: queda "pendiente" sin rol hasta que un administrador lo asigne.
-   * El primer administrador del salón se promueve a mano desde la consola de Firebase
-   * (usuarios/{uid}: rol "administrador", estado "activo") — no hay onboarding de negocio.
+   * Alta directa: todo el que se registra entra como "mesero" activo, sin aprobación.
+   * El administrador es la cuenta existente del salón (no se crea por registro) y es
+   * quien luego promueve a "jefe_mesero" desde la pantalla de Equipo.
    */
   registrar(nombre: string, email: string, password: string): Observable<Sesion> {
     return this.signUp(email, password).pipe(
@@ -200,8 +201,8 @@ export class AuthService {
         const altaUsuario$ = this.putConToken(`usuarios/${auth.localId}`, auth.idToken, {
           nombre,
           email,
-          rol: null,
-          estado: 'pendiente',
+          rol: 'mesero',
+          estado: 'activo',
           creadoEn: ahora,
         }).pipe(
           catchError(() =>
@@ -220,8 +221,8 @@ export class AuthService {
               localId: auth.localId,
               email,
               nombre,
-              rol: null,
-              estado: 'pendiente',
+              rol: 'mesero',
+              estado: 'activo',
             };
             this.guardarSesion(sesion);
             return sesion;
@@ -279,6 +280,39 @@ export class AuthService {
     );
   }
 
+  /**
+   * Google no pasa por registrar(): si es la primera vez, crea el perfil como mesero activo.
+   * Las reglas solo dejan leer a quien ya tiene perfil, así que un error de lectura
+   * (permission denied) se interpreta como "todavía no existe".
+   */
+  private crearPerfilSiFalta(auth: IdentityToolkitResponse): Observable<IdentityToolkitResponse> {
+    const url = `${this.dbUrl}/usuarios/${auth.localId}.json?auth=${auth.idToken}`;
+    return this.http.get<{ nombre?: string } | null>(url).pipe(
+      catchError(() => of(null)),
+      switchMap((perfil) => {
+        if (perfil) return of(auth);
+        return this.putConToken(`usuarios/${auth.localId}`, auth.idToken, {
+          nombre: this.nombreDesdeEmail(auth.email),
+          email: auth.email,
+          rol: 'mesero',
+          estado: 'activo',
+          creadoEn: Date.now(),
+        }).pipe(
+          map(() => auth),
+          catchError(() =>
+            throwError(
+              () => 'No se pudo guardar tu registro. Puede ser un problema temporal del servidor — intenta de nuevo en un momento.'
+            )
+          )
+        );
+      })
+    );
+  }
+
+  private nombreDesdeEmail(email: string): string {
+    return email.split('@')[0] || 'Mesero';
+  }
+
   private cargarPerfilYGuardar(auth: IdentityToolkitResponse): Observable<Sesion> {
     return this.leerPerfil(auth.localId, auth.idToken).pipe(
       map((perfil) => {
@@ -300,7 +334,7 @@ export class AuthService {
 
   private leerPerfil(uid: string, idToken: string): Observable<Pick<Sesion, 'nombre' | 'rol' | 'estado'>> {
     const url = `${this.dbUrl}/usuarios/${uid}.json?auth=${idToken}`;
-    return this.http.get<{ nombre: string; rol: Sesion['rol']; estado: 'pendiente' | 'activo' } | null>(url).pipe(
+    return this.http.get<{ nombre: string; rol: Sesion['rol']; estado: EstadoUsuario } | null>(url).pipe(
       map((perfil) => ({
         nombre: perfil?.nombre ?? '',
         rol: perfil?.rol ?? null,

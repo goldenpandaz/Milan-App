@@ -11,11 +11,5 @@ export const authGuard: CanActivateFn = () => {
     return false;
   }
 
-  const sesion = authService.getSession()!;
-  if (sesion.estado === 'pendiente') {
-    router.navigate(['/pendiente']);
-    return false;
-  }
-
   return true;
 };

@@ -12,7 +12,6 @@ export const inicioGuard: CanActivateFn = () => {
     return false;
   }
 
-  const sesion = authService.getSession()!;
-  router.navigate([sesion.estado === 'pendiente' ? '/pendiente' : '/app']);
+  router.navigate(['/app']);
   return false;
 };

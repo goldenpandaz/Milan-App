@@ -3,6 +3,8 @@ import { Observable, map } from 'rxjs';
 import { RtdbService } from './rtdb.service';
 import { Rol, Usuario } from '../models/dominio.models';
 
+export type RolAsignable = Exclude<Rol, 'administrador'>;
+
 @Injectable({ providedIn: 'root' })
 export class UserService {
   constructor(private rtdb: RtdbService) {}
@@ -13,22 +15,15 @@ export class UserService {
       .pipe(map((obj) => this.aArreglo(obj)));
   }
 
-  listarPendientes(): Observable<Usuario[]> {
-    return this.listarEquipo().pipe(map((usuarios) => usuarios.filter((u) => u.estado === 'pendiente')));
-  }
-
   listarActivosPorRol(...roles: Rol[]): Observable<Usuario[]> {
     return this.listarEquipo().pipe(
       map((usuarios) => usuarios.filter((u) => u.estado === 'activo' && u.rol && roles.includes(u.rol)))
     );
   }
 
-  asignarRol(uid: string, rol: Rol): Observable<unknown> {
-    return this.rtdb.patch(`usuarios/${uid}`, { rol, estado: 'activo' });
-  }
-
-  quitarAcceso(uid: string): Observable<unknown> {
-    return this.rtdb.patch(`usuarios/${uid}`, { rol: null, estado: 'pendiente' });
+  /** El administrador no se asigna desde la UI: solo se alterna entre mesero y jefe_mesero. */
+  asignarRol(uid: string, rol: RolAsignable): Observable<unknown> {
+    return this.rtdb.patch(`usuarios/${uid}`, { rol });
   }
 
   private aArreglo(obj: Record<string, Omit<Usuario, 'uid'>> | null): Usuario[] {

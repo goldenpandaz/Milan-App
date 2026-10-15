@@ -1,6 +1,6 @@
 export type Rol = 'administrador' | 'jefe_mesero' | 'mesero';
 
-export type EstadoUsuario = 'pendiente' | 'activo';
+export type EstadoUsuario = 'activo';
 
 export interface Usuario {
   uid: string;

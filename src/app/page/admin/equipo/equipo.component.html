@@ -15,7 +15,7 @@
       />
     </div>
 
-    <div *ngIf="usuario.uid !== miUid" class="flex gap-2">
+    <div *ngIf="usuario.rol !== 'administrador' && usuario.uid !== miUid" class="flex gap-2">
       <select
         [ngModel]="usuario.rol"
         (ngModelChange)="cambiarRol(usuario, $event)"
@@ -23,11 +23,7 @@
       >
         <option value="mesero">Mesero</option>
         <option value="jefe_mesero">Jefe de meseros</option>
-        <option value="administrador">Administrador</option>
       </select>
-      <button (click)="quitarAcceso(usuario)" class="rounded-lg border border-plata-300 px-3 text-xs text-black/50 hover:text-red-600">
-        Quitar
-      </button>
     </div>
   </div>
 </div>

@@ -74,9 +74,9 @@ export default class LoginComponent implements OnInit {
     const { email, password } = this.form.value;
 
     this.authService.login(email, password).subscribe({
-      next: (sesion) => {
+      next: () => {
         this.cargando = false;
-        this.router.navigate([sesion.estado === 'pendiente' ? '/pendiente' : '/app']);
+        this.router.navigate(['/app']);
       },
       error: (mensaje) => {
         this.cargando = false;
@@ -94,9 +94,9 @@ export default class LoginComponent implements OnInit {
     this.error = '';
 
     this.authService.loginWithGoogle().subscribe({
-      next: (sesion) => {
+      next: () => {
         this.cargando = false;
-        this.router.navigate([sesion.estado === 'pendiente' ? '/pendiente' : '/app']);
+        this.router.navigate(['/app']);
       },
       error: (mensaje) => {
         this.cargando = false;

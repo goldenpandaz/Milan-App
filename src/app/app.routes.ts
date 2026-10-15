@@ -1,6 +1,5 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
-import { pendienteGuard } from './core/guards/pendiente.guard';
 import { inicioGuard } from './core/guards/inicio.guard';
 import { rolGuard } from './core/guards/rol.guard';
 import { inventarioGuard } from './core/guards/inventario.guard';
@@ -20,11 +19,6 @@ export const routes: Routes = [
     loadComponent: () => import('./auth/register/register.component'),
   },
   {
-    path: 'pendiente',
-    canActivate: [pendienteGuard],
-    loadComponent: () => import('./auth/pendiente/pendiente.component'),
-  },
-  {
     path: 'app',
     canActivate: [authGuard],
     loadComponent: () => import('./shared/components/layout/layout.component').then((m) => m.LayoutComponent),
@@ -41,11 +35,6 @@ export const routes: Routes = [
         path: 'inventario',
         canActivate: [inventarioGuard],
         loadComponent: () => import('./page/inventario/inventario.component'),
-      },
-      {
-        path: 'admin/pendientes',
-        canActivate: [rolGuard('administrador')],
-        loadComponent: () => import('./page/admin/pendientes/pendientes.component'),
       },
       {
         path: 'admin/equipo',

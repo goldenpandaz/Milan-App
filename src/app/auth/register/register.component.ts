@@ -33,7 +33,7 @@ export default class RegisterComponent {
     this.authService.registrar(nombre, email, password).subscribe({
       next: () => {
         this.cargando = false;
-        this.router.navigate(['/pendiente']);
+        this.router.navigate(['/app']);
       },
       error: (mensaje) => {
         this.cargando = false;

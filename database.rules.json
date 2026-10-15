@@ -5,7 +5,8 @@
 
     "usuarios": {
       "$uid": {
-        ".write": "auth != null && (((!data.exists()) && (newData.child('rol').val() === null) && (newData.child('estado').val() === 'pendiente')) || (root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador'))"
+        ".write": "auth != null && ((auth.uid === $uid && !data.exists() && newData.child('rol').val() === 'mesero' && newData.child('estado').val() === 'activo') || root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador')",
+        ".validate": "(newData.child('rol').val() === 'administrador' || newData.child('rol').val() === 'jefe_mesero' || newData.child('rol').val() === 'mesero') && newData.child('estado').val() === 'activo'"
       }
     },
 
