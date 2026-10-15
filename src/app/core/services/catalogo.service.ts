@@ -1,9 +1,14 @@
 import { Injectable } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { RtdbService } from './rtdb.service';
-import { CargoCatalogo, TipoCargo } from '../models/dominio.models';
+import { CargoCatalogo } from '../models/dominio.models';
 import { generarId } from '../logica/id';
-import { CargoCrudo, nombreDeCargoNuevo, ordenarCatalogo, siguienteOrden } from '../logica/catalogo';
+import { CargoCrudo, ordenarCatalogo, siguienteOrden } from '../logica/catalogo';
+
+export interface DatosCargo {
+  nombre: string;
+  manejaInvitados: boolean;
+}
 
 /** Catálogo general de cargos y sus tareas. Es independiente de los eventos. */
 @Injectable({ providedIn: 'root' })
@@ -16,17 +21,21 @@ export class CatalogoService {
       .pipe(map((raw) => ordenarCatalogo(raw)));
   }
 
-  crearCargo(tipo: TipoCargo, nombre: string, cargos: CargoCatalogo[], uid: string): Observable<unknown> {
+  crearCargo(datos: DatosCargo, cargos: CargoCatalogo[], uid: string): Observable<unknown> {
     return this.rtdb.put(`catalogo/cargos/${generarId()}`, {
-      nombre: nombreDeCargoNuevo(tipo, nombre, cargos),
-      tipo,
+      nombre: datos.nombre.trim(),
+      manejaInvitados: datos.manejaInvitados,
       orden: siguienteOrden(cargos),
       ...this.huella(uid),
     });
   }
 
-  renombrarCargo(cargoId: string, nombre: string, uid: string): Observable<unknown> {
-    return this.rtdb.patch(`catalogo/cargos/${cargoId}`, { nombre: nombre.trim(), ...this.huella(uid) });
+  actualizarCargo(cargoId: string, datos: DatosCargo, uid: string): Observable<unknown> {
+    return this.rtdb.patch(`catalogo/cargos/${cargoId}`, {
+      nombre: datos.nombre.trim(),
+      manejaInvitados: datos.manejaInvitados,
+      ...this.huella(uid),
+    });
   }
 
   eliminarCargo(cargoId: string): Observable<unknown> {
@@ -37,6 +46,13 @@ export class CatalogoService {
   crearTarea(cargo: CargoCatalogo, titulo: string, uid: string): Observable<unknown> {
     return this.rtdb.patch(`catalogo/cargos/${cargo.id}`, {
       [`tareas/${generarId()}`]: { titulo: titulo.trim(), orden: siguienteOrden(cargo.tareas) },
+      ...this.huella(uid),
+    });
+  }
+
+  renombrarTarea(cargoId: string, tareaId: string, titulo: string, uid: string): Observable<unknown> {
+    return this.rtdb.patch(`catalogo/cargos/${cargoId}`, {
+      [`tareas/${tareaId}/titulo`]: titulo.trim(),
       ...this.huella(uid),
     });
   }

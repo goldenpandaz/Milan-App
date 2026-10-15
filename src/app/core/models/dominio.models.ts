@@ -35,8 +35,6 @@ export interface Participante {
   marcadoEn: number;
 }
 
-export type TipoCargo = 'mesero' | 'portero' | 'desmontaje' | 'libre';
-
 export interface TareaCatalogo {
   id: string;
   titulo: string;
@@ -47,14 +45,44 @@ export interface TareaCatalogo {
 export interface CargoCatalogo {
   id: string;
   nombre: string;
-  tipo: TipoCargo;
   orden: number;
+  /** Quien lo ocupa en un evento puede abrir la lista de invitados y marcar asistencia. */
+  manejaInvitados: boolean;
   actualizadoPor: string;
   actualizadoEn: number;
   tareas: TareaCatalogo[];
 }
 
-export type EstadoTarea ='pendiente' | 'hecho';
+/** Trabajador sumado a un evento. `id` es el uid real o `nr_{id}` si no está registrado en la app. */
+export interface MiembroEquipo {
+  id: string;
+  nombre: string;
+  noRegistrado?: boolean;
+  agregadoPor: string;
+  agregadoEn: number;
+}
+
+export interface TareaEvento {
+  id: string;
+  titulo: string;
+  orden: number;
+  estado: EstadoTarea;
+  hechoPor?: string | null;
+  hechoEn?: number | null;
+}
+
+/** Copia local de un cargo dentro de un evento; una vez copiada no depende del catálogo general. */
+export interface CargoEvento {
+  id: string;
+  nombre: string;
+  orden: number;
+  manejaInvitados: boolean;
+  titularId: string | null;
+  origenCatalogoId: string | null;
+  tareas: TareaEvento[];
+}
+
+export type EstadoTarea = 'pendiente' | 'hecho';
 
 export type TipoTarea = 'general' | 'lavado' | 'montaje' | 'desmontaje';
 

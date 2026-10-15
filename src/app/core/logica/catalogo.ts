@@ -1,4 +1,4 @@
-import { CargoCatalogo, TipoCargo } from '../models/dominio.models';
+import { CargoCatalogo } from '../models/dominio.models';
 
 interface TareaCruda {
   titulo: string;
@@ -7,20 +7,21 @@ interface TareaCruda {
 
 export interface CargoCrudo {
   nombre: string;
-  tipo: TipoCargo;
   orden: number;
+  manejaInvitados?: boolean;
   actualizadoPor: string;
   actualizadoEn: number;
   tareas?: Record<string, TareaCruda>;
 }
 
-/** Convierte el árbol de RTDB en cargos con `id` y tareas ordenadas. */
+/** Convierte el árbol de RTDB en cargos con `id`, opciones definidas y tareas ordenadas. */
 export function ordenarCatalogo(raw: Record<string, CargoCrudo> | null): CargoCatalogo[] {
   if (!raw) return [];
   return Object.entries(raw)
     .map(([id, cargo]) => ({
       ...cargo,
       id,
+      manejaInvitados: cargo.manejaInvitados === true,
       tareas: Object.entries(cargo.tareas ?? {})
         .map(([tareaId, tarea]) => ({ ...tarea, id: tareaId }))
         .sort((a, b) => a.orden - b.orden),
@@ -28,38 +29,21 @@ export function ordenarCatalogo(raw: Record<string, CargoCrudo> | null): CargoCa
     .sort((a, b) => a.orden - b.orden);
 }
 
-/** "Mesero N" sigue la numeración existente: no reutiliza huecos, toma el mayor + 1. */
-export function siguienteNumeroMesero(cargos: Pick<CargoCatalogo, 'nombre' | 'tipo'>[]): number {
-  const numeros = cargos
-    .filter((c) => c.tipo === 'mesero')
-    .map((c) => Number(c.nombre.match(/(\d+)\s*$/)?.[1] ?? 0));
-  return Math.max(0, ...numeros) + 1;
-}
-
 export function siguienteOrden(items: { orden: number }[]): number {
   return Math.max(0, ...items.map((i) => i.orden)) + 1;
 }
 
-/** Hay un solo cargo de desmontaje en el catálogo. */
-export function puedeAgregarDesmontaje(cargos: Pick<CargoCatalogo, 'tipo'>[]): boolean {
-  return !cargos.some((c) => c.tipo === 'desmontaje');
+/** Dos cargos no pueden llamarse igual (sin distinguir mayúsculas, tildes ni espacios de más). */
+export function normalizarNombre(nombre: string): string {
+  return nombre
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
-const NOMBRE_POR_DEFECTO: Record<TipoCargo, string> = {
-  mesero: '',
-  portero: 'Portero',
-  desmontaje: 'Desmontaje',
-  libre: '',
-};
-
-/** Nombre final de un cargo nuevo: los meseros se autonumeran y portero/desmontaje tienen nombre fijo si no escribes uno. */
-export function nombreDeCargoNuevo(
-  tipo: TipoCargo,
-  escrito: string,
-  cargos: Pick<CargoCatalogo, 'nombre' | 'tipo'>[],
-): string {
-  const nombre = escrito.trim();
-  if (nombre) return nombre;
-  if (tipo === 'mesero') return `Mesero ${siguienteNumeroMesero(cargos)}`;
-  return NOMBRE_POR_DEFECTO[tipo];
+export function nombreRepetido(nombre: string, cargos: Pick<CargoCatalogo, 'id' | 'nombre'>[], ignorarId?: string): boolean {
+  const buscado = normalizarNombre(nombre);
+  return cargos.some((c) => c.id !== ignorarId && normalizarNombre(c.nombre) === buscado);
 }

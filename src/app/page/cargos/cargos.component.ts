@@ -3,26 +3,15 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CatalogoService } from '../../core/services/catalogo.service';
 import { AuthService } from '../../core/services/auth.service';
-import { CargoCatalogo, TipoCargo } from '../../core/models/dominio.models';
-import { puedeAgregarDesmontaje } from '../../core/logica/catalogo';
+import { CargoCatalogo } from '../../core/models/dominio.models';
+import { nombreRepetido } from '../../core/logica/catalogo';
 import { BadgeComponent } from '../../shared/components/badge/badge.component';
 import { ModalComponent } from '../../shared/components/modal/modal.component';
-import {
-  OpcionSegmentada,
-  SegmentedControlComponent,
-} from '../../shared/components/segmented-control/segmented-control.component';
-
-const ETIQUETA_TIPO: Record<TipoCargo, string> = {
-  mesero: 'Mesero',
-  portero: 'Portero',
-  desmontaje: 'Desmontaje',
-  libre: 'Otro',
-};
 
 @Component({
   selector: 'app-cargos',
   standalone: true,
-  imports: [CommonModule, FormsModule, BadgeComponent, ModalComponent, SegmentedControlComponent],
+  imports: [CommonModule, FormsModule, BadgeComponent, ModalComponent],
   templateUrl: './cargos.component.html',
 })
 export default class CargosComponent implements OnInit {
@@ -30,15 +19,16 @@ export default class CargosComponent implements OnInit {
   cargando = true;
   error = '';
 
-  /** Cargo desplegado (acordeón): solo uno a la vez para que la lista siga siendo corta en el celular. */
-  abiertoId: string | null = null;
   nuevaTarea: Record<string, string> = {};
+  /** `"{cargoId}:{tareaId}"` de la tarea que se está editando, o null si ninguna. */
+  tareaEditando: string | null = null;
+  tituloEditado = '';
 
   modalAbierto = false;
-  /** Cargo que se está renombrando; null cuando el modal es para crear uno nuevo. */
+  /** Cargo que se está editando; null cuando el modal es para crear uno nuevo. */
   editando: CargoCatalogo | null = null;
-  tipoNuevo: TipoCargo = 'mesero';
-  nombreNuevo = '';
+  nombre = '';
+  manejaInvitados = false;
   cargoAEliminar: CargoCatalogo | null = null;
 
   constructor(private catalogo: CatalogoService, private auth: AuthService) {}
@@ -51,22 +41,12 @@ export default class CargosComponent implements OnInit {
     return this.auth.getSession()?.localId ?? '';
   }
 
-  get opcionesTipo(): OpcionSegmentada[] {
-    const tipos: TipoCargo[] = ['mesero', 'portero', 'libre'];
-    if (puedeAgregarDesmontaje(this.cargos)) tipos.splice(2, 0, 'desmontaje');
-    return tipos.map((valor) => ({ valor, etiqueta: ETIQUETA_TIPO[valor] }));
-  }
-
-  get nombreObligatorio(): boolean {
-    return this.tipoNuevo === 'libre';
+  get nombreRepetido(): boolean {
+    return !!this.nombre.trim() && nombreRepetido(this.nombre, this.cargos, this.editando?.id);
   }
 
   get puedeGuardar(): boolean {
-    return !this.nombreObligatorio || !!this.nombreNuevo.trim() || !!this.editando;
-  }
-
-  etiquetaTipo(tipo: TipoCargo): string {
-    return ETIQUETA_TIPO[tipo];
+    return !!this.nombre.trim() && !this.nombreRepetido;
   }
 
   cargar(): void {
@@ -80,32 +60,26 @@ export default class CargosComponent implements OnInit {
     });
   }
 
-  alternar(cargo: CargoCatalogo): void {
-    this.abiertoId = this.abiertoId === cargo.id ? null : cargo.id;
-  }
-
   abrirNuevo(): void {
     this.editando = null;
-    this.tipoNuevo = 'mesero';
-    this.nombreNuevo = '';
+    this.nombre = '';
+    this.manejaInvitados = false;
     this.modalAbierto = true;
   }
 
-  abrirRenombrar(cargo: CargoCatalogo): void {
+  abrirEditar(cargo: CargoCatalogo): void {
     this.editando = cargo;
-    this.nombreNuevo = cargo.nombre;
+    this.nombre = cargo.nombre;
+    this.manejaInvitados = cargo.manejaInvitados;
     this.modalAbierto = true;
-  }
-
-  elegirTipo(tipo: string): void {
-    this.tipoNuevo = tipo as TipoCargo;
   }
 
   guardarCargo(): void {
     if (!this.puedeGuardar) return;
+    const datos = { nombre: this.nombre, manejaInvitados: this.manejaInvitados };
     const accion$ = this.editando
-      ? this.catalogo.renombrarCargo(this.editando.id, this.nombreNuevo, this.uid)
-      : this.catalogo.crearCargo(this.tipoNuevo, this.nombreNuevo, this.cargos, this.uid);
+      ? this.catalogo.actualizarCargo(this.editando.id, datos, this.uid)
+      : this.catalogo.crearCargo(datos, this.cargos, this.uid);
 
     accion$.subscribe({
       next: () => {
@@ -121,7 +95,6 @@ export default class CargosComponent implements OnInit {
     this.catalogo.eliminarCargo(this.cargoAEliminar.id).subscribe({
       next: () => {
         this.cargoAEliminar = null;
-        this.abiertoId = null;
         this.cargar();
       },
       error: () => this.fallar('No se pudo eliminar el cargo.'),
@@ -144,6 +117,25 @@ export default class CargosComponent implements OnInit {
     this.catalogo.eliminarTarea(cargo.id, tareaId, this.uid).subscribe({
       next: () => this.cargar(),
       error: () => this.fallar('No se pudo eliminar la tarea.'),
+    });
+  }
+
+  editarTarea(cargo: CargoCatalogo, tareaId: string, tituloActual: string): void {
+    this.tareaEditando = `${cargo.id}:${tareaId}`;
+    this.tituloEditado = tituloActual;
+  }
+
+  cancelarEdicionTarea(): void {
+    this.tareaEditando = null;
+  }
+
+  guardarTarea(cargo: CargoCatalogo, tareaId: string): void {
+    const titulo = this.tituloEditado.trim();
+    this.tareaEditando = null;
+    if (!titulo) return;
+    this.catalogo.renombrarTarea(cargo.id, tareaId, titulo, this.uid).subscribe({
+      next: () => this.cargar(),
+      error: () => this.fallar('No se pudo guardar la tarea.'),
     });
   }
 

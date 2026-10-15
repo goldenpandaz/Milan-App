@@ -1,13 +1,13 @@
-import { nombreDeCargoNuevo, ordenarCatalogo, puedeAgregarDesmontaje, siguienteNumeroMesero } from './catalogo';
+import { nombreRepetido, normalizarNombre, ordenarCatalogo, siguienteOrden } from './catalogo';
 
 describe('catalogo', () => {
-  it('ordena cargos y tareas por orden y les agrega id', () => {
+  it('ordena cargos y tareas por orden y les agrega id y opciones', () => {
     const resultado = ordenarCatalogo({
-      b: { nombre: 'Mesero 2', tipo: 'mesero', orden: 2, actualizadoPor: 'u', actualizadoEn: 1 },
+      b: { nombre: 'Mesero 2', orden: 2, actualizadoPor: 'u', actualizadoEn: 1 },
       a: {
         nombre: 'Mesero 1',
-        tipo: 'mesero',
         orden: 1,
+        manejaInvitados: true,
         actualizadoPor: 'u',
         actualizadoEn: 1,
         tareas: { t2: { titulo: 'segunda', orden: 2 }, t1: { titulo: 'primera', orden: 1 } },
@@ -16,32 +16,27 @@ describe('catalogo', () => {
     expect(resultado.map((c) => c.id)).toEqual(['a', 'b']);
     expect(resultado[0].tareas.map((t) => t.id)).toEqual(['t1', 't2']);
     expect(resultado[1].tareas).toEqual([]);
+    expect(resultado[0].manejaInvitados).toBeTrue();
+    expect(resultado[1].manejaInvitados).toBeFalse();
   });
 
   it('devuelve vacío si no hay catálogo', () => {
     expect(ordenarCatalogo(null)).toEqual([]);
   });
 
-  it('numera el siguiente mesero con el mayor + 1, sin reutilizar huecos', () => {
-    const cargos = [
-      { nombre: 'Mesero 1', tipo: 'mesero' as const },
-      { nombre: 'Mesero 3', tipo: 'mesero' as const },
-      { nombre: 'Portero', tipo: 'portero' as const },
-    ];
-    expect(siguienteNumeroMesero(cargos)).toBe(4);
-    expect(siguienteNumeroMesero([])).toBe(1);
+  it('calcula el siguiente orden', () => {
+    expect(siguienteOrden([{ orden: 1 }, { orden: 3 }])).toBe(4);
+    expect(siguienteOrden([])).toBe(1);
   });
 
-  it('solo permite un desmontaje', () => {
-    expect(puedeAgregarDesmontaje([{ tipo: 'mesero' }])).toBeTrue();
-    expect(puedeAgregarDesmontaje([{ tipo: 'desmontaje' }])).toBeFalse();
+  it('normaliza nombres sin mayúsculas, tildes ni espacios de más', () => {
+    expect(normalizarNombre('  Ángel   Bar ')).toBe('angel bar');
   });
 
-  it('arma el nombre de un cargo nuevo', () => {
-    const cargos = [{ nombre: 'Mesero 1', tipo: 'mesero' as const }];
-    expect(nombreDeCargoNuevo('mesero', '', cargos)).toBe('Mesero 2');
-    expect(nombreDeCargoNuevo('portero', '', cargos)).toBe('Portero');
-    expect(nombreDeCargoNuevo('libre', '  Bar  ', cargos)).toBe('Bar');
-    expect(nombreDeCargoNuevo('libre', '', cargos)).toBe('');
+  it('detecta nombres repetidos e ignora el cargo que se está editando', () => {
+    const cargos = [{ id: 'a', nombre: 'Mesero 1' }, { id: 'b', nombre: 'Portero' }];
+    expect(nombreRepetido(' mesero  1 ', cargos)).toBeTrue();
+    expect(nombreRepetido('Mesero 1', cargos, 'a')).toBeFalse();
+    expect(nombreRepetido('Bar', cargos)).toBeFalse();
   });
 });

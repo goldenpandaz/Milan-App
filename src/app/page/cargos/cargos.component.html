@@ -22,96 +22,102 @@
   </p>
 
   <div class="grid items-start gap-5 md:grid-cols-2">
-    <article *ngFor="let cargo of cargos" class="overflow-hidden rounded-3xl border border-plata-200 bg-white shadow-sm">
-      <button (click)="alternar(cargo)" class="flex w-full items-center gap-4 p-6 text-left">
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-lg font-semibold text-plata-900">{{ cargo.nombre }}</p>
-          <p class="mt-0.5 text-sm text-black/50">{{ cargo.tareas.length }} {{ cargo.tareas.length === 1 ? 'tarea' : 'tareas' }}</p>
-        </div>
-        <app-badge [texto]="etiquetaTipo(cargo.tipo)" [tono]="cargo.tipo === 'desmontaje' ? 'plata' : 'neutro'" />
-        <svg
-          class="h-5 w-5 shrink-0 text-plata-500 transition-transform duration-200 motion-reduce:transition-none"
-          [class.rotate-180]="abiertoId === cargo.id"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      <div *ngIf="abiertoId === cargo.id" class="space-y-4 border-t border-plata-100 bg-plata-50 p-6">
-        <p *ngIf="cargo.tareas.length === 0" class="text-sm text-black/40">Este cargo todavía no tiene tareas.</p>
-
-        <ul class="space-y-2">
-          <li
-            *ngFor="let tarea of cargo.tareas"
-            class="flex items-center gap-3 rounded-xl border border-plata-200 bg-white px-4 py-3 text-base"
-          >
-            <span class="min-w-0 flex-1 break-words">{{ tarea.titulo }}</span>
-            <button
-              (click)="eliminarTarea(cargo, tarea.id)"
-              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-black/30 hover:bg-red-50 hover:text-red-600"
-              aria-label="Eliminar tarea"
-            >
-              ✕
-            </button>
-          </li>
-        </ul>
-
-        <form (ngSubmit)="agregarTarea(cargo)" class="flex gap-2">
-          <input
-            name="tarea-{{ cargo.id }}"
-            [(ngModel)]="nuevaTarea[cargo.id]"
-            placeholder="Nueva tarea…"
-            class="min-w-0 flex-1 rounded-xl border border-plata-300 bg-white px-4 py-3 text-base outline-none focus:border-plata-600"
-          />
-          <button type="submit" class="rounded-xl bg-black px-5 text-lg font-semibold text-white">+</button>
-        </form>
-
-        <div class="flex gap-2 pt-1">
-          <button
-            (click)="abrirRenombrar(cargo)"
-            class="flex-1 rounded-xl border border-plata-300 bg-white py-3 text-sm font-medium text-plata-700 hover:bg-plata-100"
-          >
-            Renombrar
-          </button>
-          <button
-            (click)="cargoAEliminar = cargo"
-            class="rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
-          >
-            Eliminar cargo
-          </button>
-        </div>
+    <section *ngFor="let cargo of cargos" class="rounded-3xl border border-plata-200 bg-white p-6 shadow-sm">
+      <div class="flex items-baseline justify-between gap-3">
+        <h2 class="truncate text-lg font-semibold text-plata-600">{{ cargo.nombre }}</h2>
+        <app-badge *ngIf="cargo.manejaInvitados" texto="Lista de invitados" tono="plata" class="shrink-0" />
       </div>
-    </article>
+
+      <p *ngIf="cargo.tareas.length === 0" class="mt-2 text-sm text-black/40">Este cargo todavía no tiene tareas.</p>
+
+      <ul *ngIf="cargo.tareas.length > 0" class="mt-2 divide-y divide-plata-100">
+        <li *ngFor="let tarea of cargo.tareas" class="group flex items-center gap-3 py-2">
+          <span class="h-5 w-5 shrink-0 rounded border-2 border-plata-300"></span>
+
+          <ng-container *ngIf="tareaEditando === cargo.id + ':' + tarea.id; else textoTarea">
+            <input
+              [(ngModel)]="tituloEditado"
+              (keyup.enter)="guardarTarea(cargo, tarea.id)"
+              (keyup.escape)="cancelarEdicionTarea()"
+              (blur)="guardarTarea(cargo, tarea.id)"
+              class="min-w-0 flex-1 rounded-lg border border-plata-400 bg-white px-2 py-1 text-base outline-none"
+            />
+          </ng-container>
+          <ng-template #textoTarea>
+            <button
+              type="button"
+              (click)="editarTarea(cargo, tarea.id, tarea.titulo)"
+              class="min-w-0 flex-1 truncate text-left text-base hover:text-plata-700"
+            >
+              {{ tarea.titulo }}
+            </button>
+          </ng-template>
+
+          <button
+            (click)="eliminarTarea(cargo, tarea.id)"
+            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-black/20 hover:bg-red-50 hover:text-red-600 group-hover:text-black/40"
+            aria-label="Eliminar tarea"
+          >
+            ✕
+          </button>
+        </li>
+      </ul>
+
+      <form (ngSubmit)="agregarTarea(cargo)" class="mt-3 flex items-center gap-2">
+        <span class="h-5 w-5 shrink-0 rounded border-2 border-dashed border-plata-300"></span>
+        <input
+          name="tarea-{{ cargo.id }}"
+          [(ngModel)]="nuevaTarea[cargo.id]"
+          placeholder="Agregar tarea…"
+          class="min-w-0 flex-1 bg-transparent py-1 text-base text-plata-700 outline-none placeholder:text-black/30"
+        />
+      </form>
+
+      <div class="mt-5 flex gap-2 border-t border-plata-100 pt-4">
+        <button
+          (click)="abrirEditar(cargo)"
+          class="flex-1 rounded-xl border border-plata-300 bg-white py-2.5 text-sm font-medium text-plata-700 hover:bg-plata-100"
+        >
+          Editar cargo
+        </button>
+        <button
+          (click)="cargoAEliminar = cargo"
+          class="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50"
+        >
+          Eliminar cargo
+        </button>
+      </div>
+    </section>
   </div>
 </div>
 
-<app-modal [abierto]="modalAbierto" [titulo]="editando ? 'Renombrar cargo' : 'Nuevo cargo'" (cerrar)="modalAbierto = false">
-  <form (ngSubmit)="guardarCargo()" class="space-y-4">
-    <div *ngIf="!editando">
-      <label class="mb-1.5 block text-sm font-medium text-black/60">Tipo</label>
-      <app-segmented-control [opciones]="opcionesTipo" [valor]="tipoNuevo" (valorChange)="elegirTipo($event)" />
-    </div>
+<app-modal [abierto]="modalAbierto" [titulo]="editando ? 'Editar cargo' : 'Nuevo cargo'" (cerrar)="modalAbierto = false">
+  <form (ngSubmit)="guardarCargo()" class="space-y-5">
     <div>
-      <label class="mb-1.5 block text-sm font-medium text-black/60">
-        Nombre
-        <span *ngIf="!editando && !nombreObligatorio" class="font-normal text-black/40">(opcional: se pone solo)</span>
-      </label>
+      <label class="mb-1.5 block text-sm font-medium text-black/60">Nombre del cargo</label>
       <input
         name="nombre"
-        [(ngModel)]="nombreNuevo"
+        [(ngModel)]="nombre"
+        placeholder="Ej: Mesero 1, Portero, Bar"
+        autocomplete="off"
         class="w-full rounded-xl border border-plata-300 bg-white px-4 py-3 text-base outline-none focus:border-plata-600"
       />
+      <p *ngIf="nombreRepetido" class="mt-1.5 text-sm text-red-600">Ya existe un cargo con ese nombre.</p>
     </div>
+
+    <label class="flex cursor-pointer items-center justify-between gap-4">
+      <span>
+        <span class="block text-base font-medium text-plata-900">Maneja la lista de invitados</span>
+        <span class="block text-sm text-black/50">Quien lo tenga en un evento ve la lista y marca quién llegó.</span>
+      </span>
+      <input type="checkbox" name="manejaInvitados" [(ngModel)]="manejaInvitados" class="h-5 w-5 shrink-0 accent-black" />
+    </label>
     <button
       type="submit"
       [disabled]="!puedeGuardar"
       class="w-full rounded-xl bg-black py-3.5 text-base font-semibold text-white disabled:opacity-40"
     >
-      {{ editando ? 'Guardar' : 'Crear cargo' }}
+      {{ editando ? 'Guardar cambios' : 'Crear cargo' }}
     </button>
   </form>
 </app-modal>
