@@ -7,10 +7,10 @@ import { CommonModule } from '@angular/common';
   imports: [CommonModule],
   template: `
     <div *ngIf="abierto" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-      <div class="w-full max-w-md rounded-t-2xl border border-plata-200 bg-white p-5 shadow-xl sm:rounded-2xl">
-        <div class="mb-3 flex items-center justify-between">
-          <h2 class="text-base font-semibold text-plata-700">{{ titulo }}</h2>
-          <button (click)="cerrar.emit()" class="text-black/50 hover:text-black">✕</button>
+      <div class="w-full max-w-lg rounded-t-3xl border border-plata-200 bg-white p-6 shadow-xl sm:rounded-3xl">
+        <div class="mb-5 flex items-center justify-between">
+          <h2 class="text-xl font-semibold text-plata-900">{{ titulo }}</h2>
+          <button (click)="cerrar.emit()" class="flex h-9 w-9 items-center justify-center rounded-full text-black/50 hover:bg-plata-100 hover:text-black" aria-label="Cerrar">✕</button>
         </div>
         <ng-content />
       </div>

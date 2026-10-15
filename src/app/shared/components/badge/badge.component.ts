@@ -14,7 +14,7 @@ const CLASES: Record<TonoBadge, string> = {
   selector: 'app-badge',
   standalone: true,
   imports: [CommonModule],
-  template: `<span class="rounded-full px-2.5 py-1 text-[11px] font-medium" [ngClass]="CLASES[tono]">{{ texto }}</span>`,
+  template: `<span class="rounded-full px-3 py-1 text-xs font-medium" [ngClass]="CLASES[tono]">{{ texto }}</span>`,
 })
 export class BadgeComponent {
   @Input() texto = '';

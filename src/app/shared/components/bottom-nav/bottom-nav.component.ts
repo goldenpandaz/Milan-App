@@ -9,14 +9,14 @@ import { ItemNav, NAV_POR_ROL } from '../../nav-items';
   standalone: true,
   imports: [CommonModule, RouterLink, RouterLinkActive],
   template: `
-    <nav class="fixed inset-x-0 bottom-0 z-20 flex border-t border-plata-200 bg-white/95 backdrop-blur md:hidden">
+    <nav class="fixed inset-x-0 bottom-0 z-20 flex border-t border-plata-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
       <a
         *ngFor="let item of items"
         [routerLink]="item.ruta"
-        routerLinkActive="text-plata-700"
-        class="flex flex-1 flex-col items-center gap-1 py-2 text-[11px] text-black/40 transition"
+        routerLinkActive="text-plata-900 font-semibold"
+        class="flex flex-1 flex-col items-center gap-1 py-3 text-xs text-black/40 transition"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-5 w-5">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-6 w-6">
           <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="item.icono" />
         </svg>
         {{ item.etiqueta }}
