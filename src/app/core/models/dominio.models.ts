@@ -1,6 +1,6 @@
 export type Rol = 'administrador' | 'jefe_mesero' | 'mesero';
 
-export type EstadoUsuario = 'activo';
+export type EstadoUsuario = 'activo' | 'inactivo';
 
 export interface Usuario {
   uid: string;
@@ -19,6 +19,8 @@ export interface Evento {
   fecha: string; // YYYY-MM-DD
   horaInicio: string; // HH:mm
   horaFin: string; // HH:mm
+  /** Cantidad de invitados. Opcional: los eventos creados antes de este campo no lo tienen. */
+  personas?: number;
   estado: EstadoEvento;
   /** Denormalizado para que las reglas de seguridad puedan validar sin escanear todas las tareas. */
   desmontajeAsignadoA?: string | null;
@@ -33,7 +35,26 @@ export interface Participante {
   marcadoEn: number;
 }
 
-export type EstadoTarea = 'pendiente' | 'hecho';
+export type TipoCargo = 'mesero' | 'portero' | 'desmontaje' | 'libre';
+
+export interface TareaCatalogo {
+  id: string;
+  titulo: string;
+  orden: number;
+}
+
+/** Cargo del catálogo general (no depende de ningún evento). */
+export interface CargoCatalogo {
+  id: string;
+  nombre: string;
+  tipo: TipoCargo;
+  orden: number;
+  actualizadoPor: string;
+  actualizadoEn: number;
+  tareas: TareaCatalogo[];
+}
+
+export type EstadoTarea ='pendiente' | 'hecho';
 
 export type TipoTarea = 'general' | 'lavado' | 'montaje' | 'desmontaje';
 

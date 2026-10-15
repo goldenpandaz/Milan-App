@@ -25,6 +25,11 @@ export const routes: Routes = [
     children: [
       { path: '', redirectTo: 'eventos', pathMatch: 'full' },
       { path: 'eventos', loadComponent: () => import('./page/eventos/eventos.component') },
+      {
+        path: 'cargos',
+        canActivate: [rolGuard('jefe_mesero')],
+        loadComponent: () => import('./page/cargos/cargos.component'),
+      },
       { path: 'tareas', loadComponent: () => import('./page/tareas/tareas.component') },
       {
         path: 'tareas/asignar',

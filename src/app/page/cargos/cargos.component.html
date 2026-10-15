@@ -1,0 +1,132 @@
+<div class="space-y-8">
+  <div class="flex items-end justify-between gap-4">
+    <div>
+      <h1 class="text-3xl font-bold tracking-tight text-plata-900">Cargos</h1>
+      <p class="mt-1 text-base text-black/50">Define los cargos y sus tareas. Después se asignan a las personas en cada evento.</p>
+    </div>
+    <button
+      (click)="abrirNuevo()"
+      class="shrink-0 rounded-full bg-black px-5 py-3 text-sm font-semibold text-white shadow-sm active:bg-plata-800"
+    >
+      + Nuevo
+    </button>
+  </div>
+
+  <p *ngIf="error" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{{ error }}</p>
+  <p *ngIf="cargando" class="text-base text-black/40">Cargando…</p>
+  <p
+    *ngIf="!cargando && !error && cargos.length === 0"
+    class="rounded-2xl border border-dashed border-plata-300 bg-white p-8 text-center text-base text-black/40"
+  >
+    Todavía no hay cargos. Crea el primero con «+ Nuevo».
+  </p>
+
+  <div class="grid items-start gap-5 md:grid-cols-2">
+    <article *ngFor="let cargo of cargos" class="overflow-hidden rounded-3xl border border-plata-200 bg-white shadow-sm">
+      <button (click)="alternar(cargo)" class="flex w-full items-center gap-4 p-6 text-left">
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-lg font-semibold text-plata-900">{{ cargo.nombre }}</p>
+          <p class="mt-0.5 text-sm text-black/50">{{ cargo.tareas.length }} {{ cargo.tareas.length === 1 ? 'tarea' : 'tareas' }}</p>
+        </div>
+        <app-badge [texto]="etiquetaTipo(cargo.tipo)" [tono]="cargo.tipo === 'desmontaje' ? 'plata' : 'neutro'" />
+        <svg
+          class="h-5 w-5 shrink-0 text-plata-500 transition-transform duration-200 motion-reduce:transition-none"
+          [class.rotate-180]="abiertoId === cargo.id"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      <div *ngIf="abiertoId === cargo.id" class="space-y-4 border-t border-plata-100 bg-plata-50 p-6">
+        <p *ngIf="cargo.tareas.length === 0" class="text-sm text-black/40">Este cargo todavía no tiene tareas.</p>
+
+        <ul class="space-y-2">
+          <li
+            *ngFor="let tarea of cargo.tareas"
+            class="flex items-center gap-3 rounded-xl border border-plata-200 bg-white px-4 py-3 text-base"
+          >
+            <span class="min-w-0 flex-1 break-words">{{ tarea.titulo }}</span>
+            <button
+              (click)="eliminarTarea(cargo, tarea.id)"
+              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-black/30 hover:bg-red-50 hover:text-red-600"
+              aria-label="Eliminar tarea"
+            >
+              ✕
+            </button>
+          </li>
+        </ul>
+
+        <form (ngSubmit)="agregarTarea(cargo)" class="flex gap-2">
+          <input
+            name="tarea-{{ cargo.id }}"
+            [(ngModel)]="nuevaTarea[cargo.id]"
+            placeholder="Nueva tarea…"
+            class="min-w-0 flex-1 rounded-xl border border-plata-300 bg-white px-4 py-3 text-base outline-none focus:border-plata-600"
+          />
+          <button type="submit" class="rounded-xl bg-black px-5 text-lg font-semibold text-white">+</button>
+        </form>
+
+        <div class="flex gap-2 pt-1">
+          <button
+            (click)="abrirRenombrar(cargo)"
+            class="flex-1 rounded-xl border border-plata-300 bg-white py-3 text-sm font-medium text-plata-700 hover:bg-plata-100"
+          >
+            Renombrar
+          </button>
+          <button
+            (click)="cargoAEliminar = cargo"
+            class="rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
+          >
+            Eliminar cargo
+          </button>
+        </div>
+      </div>
+    </article>
+  </div>
+</div>
+
+<app-modal [abierto]="modalAbierto" [titulo]="editando ? 'Renombrar cargo' : 'Nuevo cargo'" (cerrar)="modalAbierto = false">
+  <form (ngSubmit)="guardarCargo()" class="space-y-4">
+    <div *ngIf="!editando">
+      <label class="mb-1.5 block text-sm font-medium text-black/60">Tipo</label>
+      <app-segmented-control [opciones]="opcionesTipo" [valor]="tipoNuevo" (valorChange)="elegirTipo($event)" />
+    </div>
+    <div>
+      <label class="mb-1.5 block text-sm font-medium text-black/60">
+        Nombre
+        <span *ngIf="!editando && !nombreObligatorio" class="font-normal text-black/40">(opcional: se pone solo)</span>
+      </label>
+      <input
+        name="nombre"
+        [(ngModel)]="nombreNuevo"
+        class="w-full rounded-xl border border-plata-300 bg-white px-4 py-3 text-base outline-none focus:border-plata-600"
+      />
+    </div>
+    <button
+      type="submit"
+      [disabled]="!puedeGuardar"
+      class="w-full rounded-xl bg-black py-3.5 text-base font-semibold text-white disabled:opacity-40"
+    >
+      {{ editando ? 'Guardar' : 'Crear cargo' }}
+    </button>
+  </form>
+</app-modal>
+
+<app-modal [abierto]="!!cargoAEliminar" titulo="Eliminar cargo" (cerrar)="cargoAEliminar = null">
+  <p class="mb-6 text-base text-black/70">
+    Vas a eliminar <span class="font-semibold">{{ cargoAEliminar?.nombre }}</span> del catálogo, con todas sus tareas.
+    Los eventos que ya copiaron este cargo no se afectan.
+  </p>
+  <div class="flex gap-3">
+    <button (click)="cargoAEliminar = null" class="flex-1 rounded-xl border border-plata-300 py-3.5 text-base text-plata-700">
+      Cancelar
+    </button>
+    <button (click)="eliminarCargo()" class="flex-1 rounded-xl bg-red-600 py-3.5 text-base font-semibold text-white">
+      Eliminar
+    </button>
+  </div>
+</app-modal>
