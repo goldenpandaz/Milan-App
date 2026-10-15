@@ -34,7 +34,7 @@ export class EventService {
     );
   }
 
-  crear(datos: Pick<Evento, 'nombre' | 'fecha' | 'horaInicio' | 'horaFin'>, creadoPor: string): Observable<string> {
+  crear(datos: Pick<Evento, 'nombre' | 'fecha' | 'horaInicio' | 'horaFin' | 'personas'>, creadoPor: string): Observable<string> {
     const id = this.generarId();
     const info: Omit<Evento, 'id'> = { ...datos, estado: 'programado', creadoPor, creadoEn: Date.now() };
     return this.rtdb.put(`eventos/${id}/info`, info).pipe(map(() => id));
@@ -49,19 +49,20 @@ export class EventService {
     return this.rtdb.patch(`eventos/${eventoId}/info`, { estado: 'programado' });
   }
 
+  actualizar(eventoId: string, datos: Pick<Evento, 'nombre' | 'fecha' | 'horaInicio' | 'horaFin' | 'personas'>): Observable<unknown> {
+    return this.rtdb.patch(`eventos/${eventoId}/info`, datos);
+  }
+
+  /** Borra el evento y todo lo que cuelga de él en una sola operación (solo el administrador, ver reglas). */
+  eliminar(eventoId: string): Observable<unknown> {
+    return this.rtdb.remove(`eventos/${eventoId}`);
+  }
+
+  /** Solo lo usa la pantalla Asignar actual; se elimina junto con ella al introducir el equipo por evento. */
   listarParticipantes(eventoId: string): Observable<Participante[]> {
     return this.rtdb
       .get<Record<string, Participante>>(`eventos/${eventoId}/participantes`)
       .pipe(map((obj) => RtdbService.toArray(obj as any)));
-  }
-
-  activarme(eventoId: string, uid: string, nombre: string): Observable<unknown> {
-    const participante: Participante = { uid, nombre, activo: true, marcadoEn: Date.now() };
-    return this.rtdb.put(`eventos/${eventoId}/participantes/${uid}`, participante);
-  }
-
-  desactivarme(eventoId: string, uid: string): Observable<unknown> {
-    return this.rtdb.patch(`eventos/${eventoId}/participantes/${uid}`, { activo: false });
   }
 
   private generarId(): string {

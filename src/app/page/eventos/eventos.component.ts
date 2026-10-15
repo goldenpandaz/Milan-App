@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { EventService } from '../../core/services/event.service';
 import { AuthService } from '../../core/services/auth.service';
-import { Evento, Participante } from '../../core/models/dominio.models';
+import { Evento } from '../../core/models/dominio.models';
 import { BadgeComponent, TonoBadge } from '../../shared/components/badge/badge.component';
 import { ModalComponent } from '../../shared/components/modal/modal.component';
 
@@ -15,9 +15,11 @@ import { ModalComponent } from '../../shared/components/modal/modal.component';
 })
 export default class EventosComponent implements OnInit {
   eventos: Evento[] = [];
-  participantesPorEvento: Record<string, Participante[]> = {};
   cargando = true;
   modalAbierto = false;
+  /** Evento que se está editando; null cuando el modal es para crear uno nuevo. */
+  editando: Evento | null = null;
+  eventoAEliminar: Evento | null = null;
   form: FormGroup;
 
   constructor(
@@ -30,6 +32,7 @@ export default class EventosComponent implements OnInit {
       fecha: ['', Validators.required],
       horaInicio: ['19:00', Validators.required],
       horaFin: ['03:00', Validators.required],
+      personas: [null, [Validators.required, Validators.min(1)]],
     });
   }
 
@@ -37,9 +40,15 @@ export default class EventosComponent implements OnInit {
     this.cargar();
   }
 
+  /** Administrador y jefe de meseros crean, editan y finalizan eventos. */
   get puedeCrear(): boolean {
     const rol = this.authService.getSession()?.rol;
     return rol === 'administrador' || rol === 'jefe_mesero';
+  }
+
+  /** Solo el administrador elimina eventos. */
+  get puedeEliminar(): boolean {
+    return this.authService.getSession()?.rol === 'administrador';
   }
 
   get uid(): string {
@@ -51,32 +60,7 @@ export default class EventosComponent implements OnInit {
     this.eventService.listar().subscribe((eventos) => {
       this.eventos = eventos;
       this.cargando = false;
-      eventos.forEach((e) => this.cargarParticipantes(e.id));
     });
-  }
-
-  cargarParticipantes(eventoId: string): void {
-    this.eventService.listarParticipantes(eventoId).subscribe((p) => {
-      this.participantesPorEvento[eventoId] = p;
-    });
-  }
-
-  estoyActivo(eventoId: string): boolean {
-    const p = this.participantesPorEvento[eventoId]?.find((x) => x.uid === this.uid);
-    return !!p?.activo;
-  }
-
-  activosEnEvento(eventoId: string): number {
-    return this.participantesPorEvento[eventoId]?.filter((p) => p.activo).length ?? 0;
-  }
-
-  toggleActivacion(evento: Evento): void {
-    const nombre = this.authService.getSession()?.nombre ?? '';
-    const accion$ = this.estoyActivo(evento.id)
-      ? this.eventService.desactivarme(evento.id, this.uid)
-      : this.eventService.activarme(evento.id, this.uid, nombre);
-
-    accion$.subscribe(() => this.cargarParticipantes(evento.id));
   }
 
   finalizar(evento: Evento): void {
@@ -100,11 +84,41 @@ export default class EventosComponent implements OnInit {
     }
   }
 
-  crear(): void {
+  abrirNuevo(): void {
+    this.editando = null;
+    this.form.reset({ horaInicio: '19:00', horaFin: '03:00', personas: null });
+    this.modalAbierto = true;
+  }
+
+  abrirEditar(evento: Evento): void {
+    this.editando = evento;
+    this.form.reset({
+      nombre: evento.nombre,
+      fecha: evento.fecha,
+      horaInicio: evento.horaInicio,
+      horaFin: evento.horaFin,
+      personas: evento.personas ?? null,
+    });
+    this.modalAbierto = true;
+  }
+
+  guardar(): void {
     if (this.form.invalid) return;
-    this.eventService.crear(this.form.value, this.uid).subscribe(() => {
+    const accion$ = this.editando
+      ? this.eventService.actualizar(this.editando.id, this.form.value)
+      : this.eventService.crear(this.form.value, this.uid);
+
+    accion$.subscribe(() => {
       this.modalAbierto = false;
-      this.form.reset({ horaInicio: '19:00', horaFin: '03:00' });
+      this.editando = null;
+      this.cargar();
+    });
+  }
+
+  eliminar(): void {
+    if (!this.eventoAEliminar) return;
+    this.eventService.eliminar(this.eventoAEliminar.id).subscribe(() => {
+      this.eventoAEliminar = null;
       this.cargar();
     });
   }
