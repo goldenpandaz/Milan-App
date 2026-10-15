@@ -43,6 +43,7 @@
         <!-- Acción principal: todavía sin lógica (el detalle del evento llega con el equipo y los cargos). -->
         <button
           type="button"
+          [routerLink]="['/app/eventos', evento.id]"
           class="min-w-[8rem] flex-1 rounded-xl bg-black py-3.5 text-base font-semibold text-white active:bg-plata-800"
         >
           Ingresar

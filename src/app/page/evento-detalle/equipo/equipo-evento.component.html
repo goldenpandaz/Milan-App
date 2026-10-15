@@ -1,0 +1,83 @@
+<div class="space-y-5">
+  <div class="flex items-end justify-between gap-4">
+    <p class="text-base text-black/50">
+      {{ equipo.length }} {{ equipo.length === 1 ? 'persona trabaja' : 'personas trabajan' }} en este evento.
+    </p>
+    <button
+      *ngIf="editable"
+      (click)="abrirNoRegistrado()"
+      class="shrink-0 rounded-xl border border-plata-300 bg-white px-4 py-2.5 text-sm font-medium text-plata-700 hover:bg-plata-100"
+    >
+      + Agregar no registrado
+    </button>
+  </div>
+
+  <p *ngIf="error" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{{ error }}</p>
+  <p *ngIf="cargando" class="text-base text-black/40">Cargando…</p>
+
+  <section *ngIf="!cargando" class="rounded-3xl border border-plata-200 bg-white p-6 shadow-sm">
+    <p *ngIf="usuarios.length === 0 && noRegistrados.length === 0" class="text-sm text-black/40">
+      No hay trabajadores activos.
+    </p>
+    <ul class="divide-y divide-plata-100">
+      <li *ngIf="jefe" class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
+          <p class="truncate text-base font-medium text-plata-900">{{ jefe.nombre }}</p>
+          <p class="truncate text-sm text-black/50">Jefe de meseros</p>
+        </div>
+        <span class="shrink-0 text-sm text-black/40">Siempre en el equipo</span>
+      </li>
+      <li *ngFor="let u of trabajadores" class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
+          <p class="truncate text-base font-medium text-plata-900">{{ u.nombre }}</p>
+          <p class="truncate text-sm text-black/50">Trabajador</p>
+        </div>
+        <label class="flex shrink-0 cursor-pointer items-center gap-2 text-sm text-black/60">
+          {{ enEquipo(u.uid) ? 'En el equipo' : 'Fuera' }}
+          <input
+            type="checkbox"
+            [checked]="enEquipo(u.uid)"
+            [disabled]="!editable"
+            (change)="alternar(u)"
+            class="h-5 w-5 accent-black"
+          />
+        </label>
+      </li>
+      <li *ngFor="let m of noRegistrados" class="flex items-center justify-between gap-3 py-3">
+        <div class="flex min-w-0 items-center gap-2">
+          <p class="truncate text-base font-medium text-plata-900">{{ m.nombre }}</p>
+          <app-badge texto="No registrado" tono="neutro" class="shrink-0" />
+        </div>
+        <button
+          *ngIf="editable"
+          (click)="quitar(m)"
+          class="shrink-0 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+        >
+          Quitar
+        </button>
+      </li>
+    </ul>
+  </section>
+</div>
+
+<app-modal [abierto]="modalAbierto" titulo="Agregar no registrado" (cerrar)="modalAbierto = false">
+  <form (ngSubmit)="guardarNoRegistrado()" class="space-y-5">
+    <div>
+      <label class="mb-1.5 block text-sm font-medium text-black/60">Nombre</label>
+      <input
+        name="nombreNoRegistrado"
+        [(ngModel)]="nombreNoRegistrado"
+        placeholder="Ej: Juan (refuerzo)"
+        autocomplete="off"
+        class="w-full rounded-xl border border-plata-300 bg-white px-4 py-3 text-base outline-none focus:border-plata-600"
+      />
+    </div>
+    <button
+      type="submit"
+      [disabled]="!nombreNoRegistrado.trim()"
+      class="w-full rounded-xl bg-black py-3.5 text-base font-semibold text-white disabled:opacity-40"
+    >
+      Agregar
+    </button>
+  </form>
+</app-modal>

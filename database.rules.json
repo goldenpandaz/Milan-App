@@ -15,9 +15,9 @@
       ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero')",
       "cargos": {
         "$cargoId": {
-          ".validate": "newData.hasChildren(['nombre', 'tipo', 'orden'])",
+          ".validate": "newData.hasChildren(['nombre', 'orden'])",
           "nombre": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60" },
-          "tipo": { ".validate": "newData.val() === 'mesero' || newData.val() === 'portero' || newData.val() === 'desmontaje' || newData.val() === 'libre'" },
+          "manejaInvitados": { ".validate": "newData.isBoolean()" },
           "orden": { ".validate": "newData.isNumber()" },
           "actualizadoPor": { ".validate": "newData.isString()" },
           "actualizadoEn": { ".validate": "newData.isNumber()" },
@@ -50,6 +50,54 @@
         "tareas": {
           "$tareaId": {
             ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero') || (auth.uid === data.child('asignadoA').val() && newData.child('asignadoA').val() === data.child('asignadoA').val() && newData.child('titulo').val() === data.child('titulo').val() && newData.child('tipo').val() === data.child('tipo').val() && newData.child('creadoPor').val() === data.child('creadoPor').val()))"
+          }
+        },
+
+        "catalogoCopiado": {
+          ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado'",
+          ".validate": "newData.isBoolean()"
+        },
+
+        "equipo": {
+          ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado'",
+          "$miembroId": {
+            ".validate": "newData.hasChildren(['nombre', 'agregadoPor', 'agregadoEn'])",
+            "nombre": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60" },
+            "noRegistrado": { ".validate": "newData.isBoolean() && $miembroId.beginsWith('nr_')" },
+            "agregadoPor": { ".validate": "newData.isString()" },
+            "agregadoEn": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "cargos": {
+          ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado'",
+          "$cargoId": {
+            ".validate": "newData.hasChildren(['nombre', 'orden'])",
+            "nombre": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60" },
+            "orden": { ".validate": "newData.isNumber()" },
+            "manejaInvitados": { ".validate": "newData.isBoolean()" },
+            "titularId": { ".validate": "newData.isString() && newData.parent().parent().parent().child('equipo').child(newData.val()).exists()" },
+            "origenCatalogoId": { ".validate": "newData.isString()" },
+            "tareas": {
+              "$tareaId": {
+                ".validate": "newData.hasChildren(['titulo', 'orden', 'estado'])",
+                "titulo": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120" },
+                "orden": { ".validate": "newData.isNumber()" },
+                "estado": { ".validate": "newData.val() === 'pendiente' || newData.val() === 'hecho'" },
+                "hechoPor": { ".validate": "newData.isString()" },
+                "hechoEn": { ".validate": "newData.isNumber()" },
+                "$other": { ".validate": false }
+              }
+            },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "ocupacion": {
+          ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado'",
+          "$cargoId": {
+            ".validate": "newData.isString() && newData.parent().parent().child('cargos').child($cargoId).child('titularId').val() === newData.val()"
           }
         },
 

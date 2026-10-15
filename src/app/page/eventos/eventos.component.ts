@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { EventService } from '../../core/services/event.service';
 import { AuthService } from '../../core/services/auth.service';
 import { Evento } from '../../core/models/dominio.models';
@@ -10,7 +11,7 @@ import { ModalComponent } from '../../shared/components/modal/modal.component';
 @Component({
   selector: 'app-eventos',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, BadgeComponent, ModalComponent],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink, BadgeComponent, ModalComponent],
   templateUrl: './eventos.component.html',
 })
 export default class EventosComponent implements OnInit {
