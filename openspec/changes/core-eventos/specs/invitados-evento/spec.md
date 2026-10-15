@@ -16,12 +16,12 @@ Sección "Invitados" del detalle del evento: subir la lista desde un .xlsx (solo
 
 ### Requirement: Permiso por cargo
 
-Un cargo del catálogo MAY tener el permiso `manejaInvitados` ("maneja la lista de invitados"), que se copia en el snapshot del cargo al asignarlo en el evento (ver `catalogo-cargos` y `cargos-tareas`). Pueden ver y manejar la lista de un evento: el admin, el jefe y el **titular de un cargo del evento con `manejaInvitados = true`** ("titular de lista"). Si ningún cargo del evento tiene el permiso, solo la ven admin y jefe. Para que las reglas lo puedan comprobar sin recorrer cargos, el miembro guarda un puntero `equipo/{mid}/cargoInvitadosId` = `cid` de uno de sus cargos con el permiso; el puntero se recalcula en el mismo PATCH al asignar, cambiar o quitar un titular, o al cambiar el permiso de un cargo del evento, y las reglas vuelven a verificar al leer que ese cargo exista, tenga el permiso y siga teniendo a esa persona como titular (un puntero viejo no da acceso). "Portero" no tiene nada especial: es un cargo más, con o sin el permiso.
+Un cargo del catálogo MAY tener el permiso `manejaInvitados` ("maneja la lista de invitados"), que viaja en la copia del catálogo que el evento guarda en su primer ingreso; un cargo creado dentro del evento también MAY marcarse con el permiso ahí mismo (Rev. 6; ver `catalogo-cargos` y `cargos-tareas`). Lo que cuenta es la copia del cargo en ESE evento, no el catálogo. Pueden ver y manejar la lista de un evento: el admin, el jefe y el **titular de un cargo del evento con `manejaInvitados = true`** ("titular de lista"). Si ningún cargo del evento tiene el permiso, solo la ven admin y jefe. Para que las reglas lo puedan comprobar sin recorrer cargos, el miembro guarda un puntero `equipo/{mid}/cargoInvitadosId` = `cid` de uno de sus cargos con el permiso; el puntero se recalcula en el mismo PATCH al asignar, cambiar o quitar un titular, o al cambiar el permiso de un cargo del evento, y las reglas vuelven a verificar al leer que ese cargo exista, tenga el permiso y siga teniendo a esa persona como titular (un puntero viejo no da acceso). "Portero" no tiene nada especial: es un cargo más, con o sin el permiso.
 
 #### Scenario: Cargo con permiso
-- GIVEN el cargo `Recepción` del catálogo con `manejaInvitados = true`
-- WHEN el jefe se lo asigna a Ana en el evento
-- THEN el snapshot del cargo tiene `manejaInvitados = true`, `equipo/Ana/cargoInvitadosId` apunta a él y Ana ve la sección Invitados desde 1 h antes del inicio
+- GIVEN el cargo `Recepción` copiado en el evento con `manejaInvitados = true`
+- WHEN el jefe se lo asigna a Ana
+- THEN el cargo del evento tiene `manejaInvitados = true`, `equipo/Ana/cargoInvitadosId` apunta a él y Ana ve la sección Invitados desde 1 h antes del inicio
 
 #### Scenario: Ningún cargo con permiso
 - GIVEN un evento sin cargos con `manejaInvitados`

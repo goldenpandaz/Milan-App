@@ -32,7 +32,7 @@ Toda entrada en `auditoria/{eid}/{pushId}` MUST tener `accion`, `actorUid`, `obj
 
 ### Requirement: Acciones registradas
 
-MUST registrarse, con `accion` de la forma `dominio.verbo`: CRUD, ciclo de vida y archivado de eventos (`evento.crear|editar|finalizar|reactivar|archivar|desarchivar|borrar`; `evento.reactivar` guarda quién y cuándo reabrió), alta y baja de miembros (`equipo.agregar|quitar`; `equipo.ver_invitados` se elimina en Rev. 5), asignación de un cargo a una persona con su snapshot o cambio de titular (`cargo.titular`, con `paraMid`), quitar titular (`cargo.quitar_titular`), renombrar y deshacer una asignación (`cargo.editar|eliminar`), alta, edición, movimiento y cobertura de tareas "sin responsable" (`tarea.mover|cubrir`), baja y marcado de tareas (propio y delegado, `tarea.*`) subida, re-subida (con el resumen de la fusión) y borrado de la lista de invitados (`invitados.subir|reemplazar|borrar`; `invitados.todos` se elimina en Rev. 5) y cada marca o desmarca de asistencia (`invitado.asistencia`, `objetivo = gid`). `cargos.copiar_catalogo`, `cargo.crear` y `cargo.activar` no existen (no se copia el catálogo ni se crean cargos por evento) y `inventario.*` queda pospuesto con el inventario. Cada acción MUST escribirse junto con su efecto en un único PATCH; para el marcado del mesero las reglas MUST exigir ese acople (ver `reglas-seguridad`). El mesero MUST poder agregar solo entradas `tarea.marcar` de su propio marcado, dentro de su ventana, y el titular de un cargo con `manejaInvitados` solo entradas `invitado.asistencia` acopladas a su marca, dentro de la ventana de la lista (ver `invitados-evento`). Una vez finalizado el evento, solo el admin MUST poder agregar entradas (por ejemplo `evento.reactivar`).
+MUST registrarse, con `accion` de la forma `dominio.verbo`: CRUD, ciclo de vida y archivado de eventos (`evento.crear|editar|finalizar|reactivar|archivar|desarchivar|borrar`; `evento.reactivar` guarda quién y cuándo reabrió), alta y baja de miembros (`equipo.agregar|quitar`; `equipo.ver_invitados` se elimina en Rev. 5), (Rev. 6) la copia del catálogo al primer ingreso (`cargos.copiar_catalogo`, con el conteo de cargos y tareas), asignación de un titular (`cargo.titular`, con `paraMid`), quitar titular (`cargo.quitar_titular`), crear, renombrar/cambiar permiso y eliminar un cargo del evento (`cargo.crear|editar|eliminar`; `eliminar` lista los títulos de las tareas pendientes borradas), alta, edición, baja y movimiento de tareas entre cargos (`tarea.crear|editar|eliminar|mover`, `mover` con `detalle {desde, hacia, estado}`) y marcado de tareas (propio y delegado, `tarea.marcar`), subida, re-subida (con el resumen de la fusión) y borrado de la lista de invitados (`invitados.subir|reemplazar|borrar`; `invitados.todos` se elimina en Rev. 5) y cada marca o desmarca de asistencia (`invitado.asistencia`, `objetivo = gid`). `tarea.cubrir` y `cargo.activar` no existen (Rev. 6: ya no hay tareas derivadas del catálogo ni cargos por activar) y `inventario.*` queda pospuesto con el inventario. Cada acción MUST escribirse junto con su efecto en un único PATCH; para el marcado del mesero las reglas MUST exigir ese acople (ver `reglas-seguridad`). El mesero MUST poder agregar solo entradas `tarea.marcar` de su propio marcado, dentro de su ventana, y el titular de un cargo con `manejaInvitados` solo entradas `invitado.asistencia` acopladas a su marca, dentro de la ventana de la lista (ver `invitados-evento`). Una vez finalizado el evento, solo el admin MUST poder agregar entradas (por ejemplo `evento.reactivar`).
 
 #### Scenario: Atomicidad
 - GIVEN una asignación
@@ -40,9 +40,9 @@ MUST registrarse, con `accion` de la forma `dominio.verbo`: CRUD, ciclo de vida 
 - THEN la asignación tampoco se aplica
 
 #### Scenario: Asignación auditada
-- GIVEN un miembro sin cargo
-- WHEN el jefe le asigna `Mesero 2`
-- THEN hay una sola entrada `cargo.titular` con `actorUid = jefe`, `paraMid` y el resumen del snapshot
+- GIVEN un miembro sin cargo y `Mesero 2` libre en el evento
+- WHEN el jefe se lo asigna
+- THEN hay una sola entrada `cargo.titular` con `actorUid = jefe`, `objetivo = cid` y `paraMid`
 
 #### Scenario: Reactivación auditada
 - GIVEN un evento finalizado

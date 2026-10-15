@@ -246,3 +246,17 @@ Decisiones del usuario (autoritativas; reemplazan lo que contradiga en Rev. 3 pu
 6. **Re-subida con fusión:** los ya marcados conservan su marca (pareja por nombre normalizado + mesa, o por nombre único si cambió la mesa); los marcados que desaparecen quedan como "removidos de la lista" (supuesto, Q20); todo auditado.
 7. **Se mantiene todo lo demás** (ciclo de vida por horas, snapshot por asignación, cargo numerado de un titular, `Apoyo` múltiple, tareas sin responsable, archivar vs. borrar, desmontaje/inventario pospuesto, reactivar solo admin).
 8. **Duda abierta (Q19):** si la lista cuenta como "dato" para bloquear el borrado del evento. No se decide.
+
+## Revisión 6 (2026-10-15): cargos por evento como copia completa al ingresar
+
+Decisión del usuario. **Reemplaza** en este punto lo dicho en las Revisiones 3, 4 y 5 sobre "snapshot por cargo al asignar", el cargo genérico `Apoyo` asignable a varias personas, el índice `ocupacion` atado al catálogo, la vista derivada de tareas del catálogo (`tarea.cubrir`) y la prohibición de crear cargos propios del evento (ex Q15). Detalle en `cargos-tareas`, `catalogo-cargos` y D28–D31 del design.
+
+1. **Catálogo = plantilla pura**, como ya está implementado: cargos con nombre, orden, tareas y `manejaInvitados`. Se eliminan `Apoyo`, el `tipo` de cargo y cualquier noción de "varias personas" (`variasPersonas`): fue una mala idea y el usuario la rechazó.
+2. **Copia completa al primer ingreso:** la primera vez que admin o jefe entran a un evento ("Ingresar"), el evento copia todo el catálogo (cargos y tareas) con una marca `cargosCopiadosEn` que se escribe una sola vez. No se copia al crear el evento, así cada evento trae el catálogo vigente al momento de entrar.
+3. **Edición aislada dentro del evento** (admin y jefe): renombrar, crear cargos solo de ese evento (p. ej. "Mesero 6") con sus tareas, eliminar cargos (solo si no tienen tareas hechas; las pendientes se pierden si no se mueven antes) y **mover tareas** entre cargos ("desbaratar"), conservando el id y el estado hecho, con auditoría `tarea.mover`. Nada toca el catálogo ni otros eventos.
+4. **Un titular por cargo**, con `ocupacion/{cid}` LOCAL al evento: si hace falta más gente que cargos, se crean cargos en el evento. Cambiar de titular = quitar + asignar.
+5. **`manejaInvitados`** viaja en la copia y también se puede marcar en un cargo creado en el evento; vale lo que diga la copia de ESE evento.
+6. **"Sin responsable"** = tareas de cargos del evento sin titular (o con titular quitado o inactivo); se resuelven moviendo tareas o asignando titular. Q9, Q17 y Q18 quedan obsoletas.
+7. **Se mantiene todo lo demás** (ciclo de vida por horas, borrar vs. archivar, lista de invitados de la Rev. 5, auditoría append-only, gestión de usuarios y equipo).
+
+Impacto en el plan: el slice 4 se reescribe (14 → 17 tareas; total pendiente 107); ajustes menores en el slice 2 (sin `tipo`). Nuevas V21–V22 y filas m–p en "Viabilidad de reglas"; V14 redefinida.

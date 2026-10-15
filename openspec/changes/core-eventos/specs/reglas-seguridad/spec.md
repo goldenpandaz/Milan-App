@@ -35,7 +35,9 @@ Las reglas MUST definir (inline) `activo`, `esAdmin`, `esJefeOAdmin` y `esMiembr
 | `eventos/{eid}` borrar | sí, salvo pasado con `actividad` (ese solo se archiva) | no | no | no |
 | `eventos/{eid}/info/reabierto*`, `archivado*` w | sí | no | no | no |
 | `eventos/{eid}` w (info sin borrar, equipo, cargos, tareas, ocupacion) | sí, mientras `EDITABLE` (fin + 4 h o reabierto) | sí, mientras `EDITABLE` | no | solo `tareas/.../estado` y `auditId` de su cargo, dentro de la ventana (inicio a fin + 2 h), acoplado a su entrada de auditoría |
-| `eventos/{eid}/ocupacion/{ccid}` w | crear una vez; borrar solo con su cargo | idem | no | no |
+| `eventos/{eid}/ocupacion/{cid}` w (Rev. 6: índice LOCAL del evento, `= mid` del titular) | escribir solo si está libre, junto con `titularId`; borrar solo junto con quitar el titular o el cargo | idem | no | no |
+| `eventos/{eid}/cargosCopiadosEn` w (Rev. 6: marca de copia del catálogo) | una sola vez (`!data.exists()`), mientras `EDITABLE`, `=== now` | idem | no | no |
+| `eventos/{eid}/tareas/{tid}/cargoId` w (Rev. 6: mover tarea) | sí, mientras `EDITABLE`; el destino debe existir en el post-estado | idem | no | no |
 | `eventos/{eid}/actividad` w (solo `true`, nunca borrar salvo con el evento) | sí, mientras `EDITABLE` | sí, mientras `EDITABLE` | no | sí, dentro de la ventana |
 | `membresias/{uid}` r | propio | propio | propio | propio |
 | `membresias` w | sí | sí | no | no |
@@ -75,10 +77,10 @@ Las reglas MUST definir (inline) `activo`, `esAdmin`, `esJefeOAdmin` y `esMiembr
 - WHEN lee `invitados/{eid}/lista`
 - THEN recibe 403 (la regla re-verifica el cargo apuntado; un puntero viejo no abre)
 
-#### Scenario: Snapshot con origen
-- GIVEN un jefe
-- WHEN escribe en un PATCH el cargo y las tareas del evento con `origenCatalogoId`, `ocupacion` y la entrada de auditoría
-- THEN se acepta aunque `origenCatalogoId` no exista en el catálogo (solo trazabilidad)
+#### Scenario: Copia del catálogo con origen
+- GIVEN un jefe y un evento sin `cargosCopiadosEn`
+- WHEN escribe en un PATCH todos los cargos y tareas copiados con `origenCatalogoId`, la marca `cargosCopiadosEn` y la entrada `cargos.copiar_catalogo`
+- THEN se acepta aunque algún `origenCatalogoId` ya no exista en el catálogo (solo trazabilidad); un segundo PATCH igual recibe 403 entero por la marca
 
 ### Requirement: Tiempo en las reglas
 
@@ -99,9 +101,9 @@ Las reglas MUST usar `now` y `info/inicioTs`/`finTs` para: (a) permitir el marca
 - WHEN el jefe edita `tareas`
 - THEN se acepta, y el mesero sigue recibiendo 403 al marcar
 
-#### Scenario: Cargo numerado duplicado
-- GIVEN `ocupacion/{ccid}` ya existe
-- WHEN otro PATCH escribe `ocupacion/{ccid}` (segundo snapshot del mismo cargo)
+#### Scenario: Cargo ya ocupado
+- GIVEN `ocupacion/{cid}` ya existe (el cargo tiene titular)
+- WHEN otro PATCH escribe `ocupacion/{cid}` y `cargos/{cid}/titularId` con otra persona
 - THEN recibe 403 entero
 
 #### Scenario: Desfijar actividad
@@ -139,7 +141,7 @@ Antes de cada deploy de reglas MUST guardarse un backup de las reglas vivas (las
 
 ### Requirement: Verificación
 
-Cada slice que cambie reglas MUST pasar la matriz en el emulador (checklist REST) antes del deploy. Comportamientos por confirmar (V1–V20 del design; Rev. 5 redefine V7 y V13 y agrega V18–V20 para la lista de invitados, ver también "Viabilidad de reglas"): `child(null)` sin puntero, validación por hoja en PATCH raíz, `ts === now` vía REST, `.validate` de ancestros, shallow, superposición de paths, strings largos, `actualizadoEn` del catálogo, borrado atómico del evento, enteros en `config`, `EDITABLE` por hoja y en la creación (V11), borrado condicional por `actividad` (V12), ventanas de invitados (V13), unicidad de `ocupacion` (V14), acople marcado ↔ auditoría (V15), aritmética con `null` (V16) y condiciones en `.write` frente a borrados (V17).
+Cada slice que cambie reglas MUST pasar la matriz en el emulador (checklist REST) antes del deploy. Comportamientos por confirmar (V1–V20 del design; Rev. 5 redefine V7 y V13 y agrega V18–V20 para la lista de invitados, ver también "Viabilidad de reglas"): `child(null)` sin puntero, validación por hoja en PATCH raíz, `ts === now` vía REST, `.validate` de ancestros, shallow, superposición de paths, strings largos, `actualizadoEn` del catálogo, borrado atómico del evento, enteros en `config`, `EDITABLE` por hoja y en la creación (V11), borrado condicional por `actividad` (V12), ventanas de invitados (V13), unicidad de titular con `ocupacion` local (V14, redefinida en Rev. 6), marca única de copia del catálogo (V21), mover tarea con destino existente (V22), acople marcado ↔ auditoría (V15), aritmética con `null` (V16) y condiciones en `.write` frente a borrados (V17).
 
 #### Scenario: Puntero faltante
 - GIVEN una tarea cuyo `cargoId` apunta a un cargo inexistente

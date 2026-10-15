@@ -126,7 +126,7 @@ Solo el admin MUST poder borrar o archivar. Un evento ya pasado (`now > finTs`) 
 
 ### Requirement: Borrado en cascada
 
-Al borrar un evento permitido, el admin MUST confirmar en un modal y la app MUST borrar en un único PATCH `eventos/{eid}` completo (info, equipo, cargos, tareas, ocupacion, actividad), `membresias/{uid}/{eid}` de cada registrado e `invitados/{eid}`, junto con la entrada `evento.borrar`. La auditoría del evento MUST conservarse (queda huérfana).
+Al borrar un evento permitido, el admin MUST confirmar en un modal y la app MUST borrar en un único PATCH `eventos/{eid}` completo (info, equipo, cargos, tareas, ocupacion, cargosCopiadosEn, actividad), `membresias/{uid}/{eid}` de cada registrado e `invitados/{eid}`, junto con la entrada `evento.borrar`. La auditoría del evento MUST conservarse (queda huérfana).
 
 #### Scenario: Admin borra
 - GIVEN un evento borrable con equipo, cargos, tareas e invitados
@@ -140,7 +140,7 @@ Al borrar un evento permitido, el admin MUST confirmar en un modal y la app MUST
 
 ### Requirement: Detalle del evento
 
-El botón "Ingresar" de cada card MUST abrir `/app/eventos/{eid}`. El detalle MUST mostrar secciones según el rol:
+El botón "Ingresar" de cada card MUST abrir `/app/eventos/{eid}`. (Rev. 6) Si quien entra es admin o jefe, el evento es editable y todavía no tiene `cargosCopiadosEn`, el detalle MUST copiar antes el catálogo completo al evento (ver `cargos-tareas`, "Copia del catálogo al ingresar"). El detalle MUST mostrar secciones según el rol:
 
 | Sección | Admin / jefe | Mesero miembro |
 |---|---|---|
@@ -194,12 +194,12 @@ Admin y jefe MUST poder armar el equipo de cada evento dentro del evento (botón
 
 ### Requirement: Quitar miembro
 
-Quitar a un miembro MUST borrar en un PATCH su `equipo` (incluido su puntero `cargoInvitadosId`), su `membresias` y su `titularId` en los cargos (el snapshot del cargo y su `ocupacion` se conservan), y MUST conservar la auditoría.
+Quitar a un miembro MUST borrar en un PATCH su `equipo` (incluido su puntero `cargoInvitadosId`), su `membresias` y, en cada cargo del que era titular, su `titularId` y su `ocupacion/{cid}` (Rev. 6: el cargo del evento y sus tareas se conservan), y MUST conservar la auditoría.
 
 #### Scenario: Quitar titular
 - GIVEN un miembro titular de un cargo
 - WHEN el jefe lo quita
-- THEN el cargo queda sin `titularId`, sus tareas pasan a "sin responsable", el cargo se puede asignar a otra persona (reutilizando el mismo snapshot) y la auditoría previa sigue intacta
+- THEN el cargo queda sin `titularId` ni `ocupacion`, sus tareas pasan a "sin responsable", el mismo cargo se puede asignar a otra persona y la auditoría previa sigue intacta
 
 ### Requirement: Visibilidad
 

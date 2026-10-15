@@ -2,126 +2,141 @@
 
 ## Purpose
 
-Cargos POR EVENTO: el catálogo es plantilla y el evento guarda su propia copia (snapshot) de un cargo y sus tareas **al asignarlo a una persona**. Cubre la ocupación de cargos (numerados de una sola persona, `Apoyo` de varias), las tareas "sin responsable", el marcado propio y delegado dentro de la ventana de tiempo y la vista del mesero. Reemplaza las viejas pantallas "Tareas" y "Asignar" y la idea previa de copiar el catálogo entero al evento. No existen cargos creados solo para un evento (decisión del usuario). (Rev. 5) En este spec "mesero" como persona = usuario con rol `mesero`, que la UI muestra como **Trabajador**; `Mesero N` es un cargo.
+(Rev. 6, reemplaza el modelo de "snapshot al asignar" y el cargo genérico `Apoyo`.) Cargos POR EVENTO: el catálogo general es solo plantilla; la primera vez que admin o jefe entran a un evento ("Ingresar"), el evento guarda una **copia completa** del catálogo (todos los cargos con sus tareas). Desde ahí la copia es del evento y se edita de forma aislada: renombrar, crear cargos nuevos solo de ese evento (p. ej. "Mesero 6"), eliminar cargos y mover tareas entre cargos ("desbaratar"). Cada cargo del evento tiene **un solo titular** (persona del equipo o "no registrado"); si hace falta más gente que cargos, se crean cargos nuevos en el evento. Cubre también las tareas "sin responsable", el marcado propio y delegado dentro de la ventana de tiempo y la vista del mesero. En este spec "mesero" como persona = usuario con rol `mesero` (la UI lo muestra como **Trabajador**); `Mesero N` es un cargo.
 
 ## Requirements
 
-### Requirement: Snapshot al asignar
+### Requirement: Copia del catálogo al ingresar
 
-Admin y jefe MUST poder asignar a una persona del equipo del evento un cargo del catálogo. Al asignarlo, el evento MUST crear en un único PATCH su propia copia: un cargo en `eventos/{eid}/cargos` (`nombre`, `tipo`, `orden`, `manejaInvitados`, `titularId`, `origenCatalogoId`) y sus tareas en `eventos/{eid}/tareas` (ids nuevos, `estado = pendiente`, `origenCatalogoId`), el índice `ocupacion/{ccid} = cid` (salvo `Apoyo`) y la entrada de auditoría `cargo.titular`. El catálogo completo MUST NOT copiarse al evento y MUST NOT crearse cargos por adelantado ni cargos propios del evento. Después del snapshot el evento MUST ser independiente del catálogo: editar o borrar el catálogo no cambia ningún evento existente ni pasado.
+Cuando admin o jefe abren el detalle de un evento editable y el evento todavía no tiene copia (`eventos/{eid}/cargosCopiadosEn` no existe), la app MUST copiar en un único PATCH todo el catálogo tal como está en ese momento: por cada cargo del catálogo un `eventos/{eid}/cargos/{cid}` (`nombre`, `orden`, `manejaInvitados`, `origenCatalogoId`, sin titular) y por cada tarea un `eventos/{eid}/tareas/{tid}` (ids nuevos, `cargoId = cid`, `titulo`, `orden`, `estado = pendiente`, `origenCatalogoId`), más la marca `cargosCopiadosEn` (hora del servidor) y la entrada de auditoría `cargos.copiar_catalogo`. La marca MUST escribirse una sola vez: si dos personas entran a la vez, el segundo PATCH MUST rechazarse entero y la app MUST releer el evento. Un catálogo vacío MUST igual dejar la marca (el evento queda sin cargos y se crean a mano). El mesero MUST NOT disparar la copia (no lee el catálogo); si entra antes, ve "Todavía no tienes un cargo en este evento". Un evento finalizado sin copia MUST NOT copiar nada.
 
-Si el cargo tiene `manejaInvitados = true`, el mismo PATCH MUST fijar `equipo/{mid}/cargoInvitadosId = cid` (puntero para las reglas de la lista de invitados, ver `invitados-evento`). Cambiar o quitar el titular, deshacer la asignación, sacar al miembro del equipo o cambiar `manejaInvitados` del cargo del evento MUST recalcular ese puntero en el mismo PATCH (apunta a otro cargo con permiso de esa persona, o se borra). Admin y jefe MAY cambiar `manejaInvitados` de un cargo del evento (solo ese evento, `cargo.editar`; ASSUMED, Rev. 5).
+#### Scenario: Primer ingreso
+- GIVEN un catálogo con `Portero` (2 tareas) y `Mesero 1..5` (3 tareas cada uno) y un evento sin copia
+- WHEN el jefe toca "Ingresar"
+- THEN el evento tiene 6 cargos sin titular y 17 tareas pendientes con `origenCatalogoId`, la marca `cargosCopiadosEn` y una entrada `cargos.copiar_catalogo`
 
-#### Scenario: Asignar un cargo
-- GIVEN un catálogo con `Mesero 1` (2 tareas) y un miembro del equipo
-- WHEN el jefe asigna `Mesero 1` a ese miembro
-- THEN el evento tiene un cargo `Mesero 1` con `titularId` y 2 tareas propias pendientes con `origenCatalogoId`, `ocupacion/{ccid}` apunta a ese cargo y hay una entrada `cargo.titular` con `paraMid`
+#### Scenario: Segundo ingreso
+- GIVEN un evento que ya tiene `cargosCopiadosEn`
+- WHEN el admin vuelve a entrar
+- THEN no se copia nada
 
-#### Scenario: Solo se copia lo asignado
-- GIVEN un catálogo con 5 `Mesero` y un evento con 4 personas con cargo
-- WHEN el jefe termina de asignar
-- THEN el evento tiene 4 cargos guardados y no hay un `Mesero 5` guardado
+#### Scenario: Dos ingresos a la vez
+- GIVEN un evento sin copia
+- WHEN admin y jefe entran al mismo tiempo
+- THEN solo un PATCH se aplica, el otro recibe 403 y su app relee el evento ya copiado
 
-#### Scenario: Independencia posterior
-- GIVEN un evento donde ya se asignó `Portero`
-- WHEN el admin cambia o borra `Portero` y sus tareas en el catálogo
-- THEN el evento, también si ya pasó, no cambia
+### Requirement: Independencia de la copia
 
-### Requirement: Un cargo numerado, una persona
+Una vez copiado, el evento MUST ser independiente del catálogo y de los demás eventos: editar o borrar el catálogo después MUST NOT cambiar ningún evento ya copiado (ni pasado ni futuro). Un evento que todavía no se copió MUST traer el catálogo vigente al momento de su primer ingreso. Ninguna edición dentro del evento MUST escribir bajo `catalogo/`.
 
-Un cargo no `Apoyo` del catálogo (`Mesero N` o `libre`, p. ej. `Portero`) MUST tener a lo sumo un snapshot por evento y ese snapshot a lo sumo un titular (`titularId`). Si ya tiene titular, la app MUST avisar ("Ya está tomado por {nombre}") y MUST NOT dejar asignarlo. Las reglas MUST impedir un segundo snapshot del mismo cargo mediante `eventos/{eid}/ocupacion/{ccid}` (se escribe una sola vez y solo se borra junto con su cargo). Cambiar de titular MUST actualizar el `titularId` del mismo snapshot (conserva sus tareas y lo ya marcado). Un miembro MAY tener varios cargos distintos.
+#### Scenario: Catálogo editado después
+- GIVEN un evento que ya copió `Portero`
+- WHEN el admin renombra o borra `Portero` en el catálogo
+- THEN el evento no cambia
 
-#### Scenario: Cargo ya tomado
-- GIVEN `Mesero 3` asignado a Ana
-- WHEN el jefe intenta asignar `Mesero 3` a Luis
-- THEN la app avisa que ya está tomado y no escribe
+#### Scenario: Evento futuro sin copia
+- GIVEN un evento futuro al que nadie entró todavía
+- WHEN el jefe agrega una tarea a `Mesero 1` en el catálogo y después entra al evento
+- THEN el `Mesero 1` del evento ya trae la tarea nueva
 
-#### Scenario: Doble snapshot por la REST
-- GIVEN `ocupacion/{ccid}` ya existe
-- WHEN un PATCH crea otro cargo con el mismo `origenCatalogoId` y reescribe `ocupacion/{ccid}`
-- THEN recibe 403 y no se aplica nada
+### Requirement: Edición de cargos dentro del evento
 
-#### Scenario: Cambiar de titular
-- GIVEN `Mesero 3` asignado a Ana, con una tarea ya hecha
-- WHEN el jefe lo pasa a Luis
-- THEN en un PATCH el mismo cargo queda con `titularId = Luis`, la tarea hecha sigue hecha y hay una entrada `cargo.titular`
-- AND si el cargo tiene `manejaInvitados`, el puntero `cargoInvitadosId` pasa de Ana a Luis en el mismo PATCH
+Mientras el evento sea editable, admin y jefe MUST poder, solo en ese evento y siempre auditado: renombrar un cargo y cambiar su `manejaInvitados` (`cargo.editar`); crear un cargo nuevo con nombre libre (la UI sugiere el siguiente `Mesero N`), `manejaInvitados` opcional y sus propias tareas, sin `origenCatalogoId` (`cargo.crear`); y eliminar un cargo (`cargo.eliminar`, ver el requirement siguiente). Cambiar `manejaInvitados` o el titular MUST recalcular en el mismo PATCH el puntero `equipo/{mid}/cargoInvitadosId` del titular (ver `invitados-evento`).
 
-#### Scenario: Reasignar un snapshot sin titular
-- GIVEN `Mesero 3` con snapshot pero sin titular (se quitó a su titular)
-- WHEN el jefe se lo asigna a Luis
-- THEN se reutiliza ese snapshot (no se crea otro)
-
-#### Scenario: Deshacer una asignación
-- GIVEN un cargo asignado por error y sin tareas hechas
-- WHEN el admin lo deshace
-- THEN se borran el cargo, sus tareas y `ocupacion/{ccid}` en un PATCH, con `cargo.eliminar`; si alguna tarea está hecha la app no lo permite
-
-### Requirement: Cargo Apoyo
-
-El cargo genérico `Apoyo` del catálogo MUST poder asignarse a varias personas a la vez en el mismo evento. Cada asignación MUST crear su propio cargo del evento con su propia copia de las tareas genéricas (cada persona marca las suyas) y MUST NOT usar `ocupacion`. Si hay más personas que cargos, las que sobran MUST tomar `Apoyo`; la app MUST NOT inventar cargos como "Mesero 6".
-
-#### Scenario: Siete personas, cinco cargos
-- GIVEN un catálogo con `Mesero 1` a `Mesero 5` y `Apoyo`, y 7 meseros en el equipo
-- WHEN el jefe asigna `Mesero 1..5` a cinco y `Apoyo` a los otros dos
-- THEN el evento tiene 5 cargos numerados y 2 cargos `Apoyo`, cada uno con su titular y su copia de las tareas genéricas
-
-### Requirement: Tareas sin responsable
-
-Mientras el evento sea editable, las tareas "sin responsable" MUST ser: (a) las de un snapshot sin titular, con titular quitado del equipo o con titular inactivo; y (b) las de cada cargo del catálogo (no `Apoyo`) que no tiene snapshot en el evento, como **vista derivada sin escribir nada**, excluyendo las que ya se cubrieron (alguna tarea del evento tiene ese `origenCatalogoId`). Admin y jefe MUST poder reasignarlas solo dentro de ese evento: (a) moviéndolas a otro cargo del evento (`tarea.mover`); (b) copiándolas como tarea nueva de un cargo del evento (`tarea.cubrir`, con `origenCatalogoId`). Ninguna reasignación MUST modificar `catalogo` ni crear un cargo. Con el evento finalizado, la parte (b) MUST NOT mostrarse: el evento muestra solo lo que guardó. La cantidad de meseros sugerida por `configuracion-meseros` MUST ser solo un aviso que compara con la cantidad de personas con cargo `mesero`, sin cambiar nada.
-
-#### Scenario: Cuatro de cinco
-- GIVEN un catálogo con `Mesero 1..5`, la sugerencia de 5 y 4 personas con `Mesero 1..4`
-- WHEN el jefe abre Tareas
-- THEN ve "Para 150 personas se sugieren 5 meseros; tienes 4" y las tareas de `Mesero 5` en "Sin responsable", sin que exista ningún `Mesero 5` guardado en el evento
-
-#### Scenario: Cubrir una tarea del catálogo
-- GIVEN una tarea derivada "sin responsable" de `Mesero 5`
-- WHEN el jefe la reasigna a `Mesero 2`
-- THEN `Mesero 2` tiene una tarea nueva copiada (con `origenCatalogoId`), hay una entrada `tarea.cubrir`, la tarea deja de aparecer "sin responsable" y el catálogo no cambia
-
-#### Scenario: Mover una tarea guardada
-- GIVEN tareas "sin responsable" de un snapshot `Mesero 4` sin titular
-- WHEN el jefe las mueve a `Mesero 2`
-- THEN quedan con el `cargoId` de `Mesero 2` y hay entradas `tarea.mover`
-
-#### Scenario: Mesero inactivado
-- GIVEN un mesero titular de `Mesero 2` en un evento futuro
-- WHEN el admin lo inactiva
-- THEN sigue en el equipo del evento marcado como inactivo y las tareas de `Mesero 2` aparecen "sin responsable"
-
-#### Scenario: Evento finalizado
-- GIVEN un evento finalizado y un cargo del catálogo que nunca se asignó
-- WHEN el admin abre Tareas
-- THEN no aparecen tareas derivadas de ese cargo
-
-### Requirement: Edición dentro del evento
-
-Admin y jefe MAY renombrar un cargo del evento (`cargo.editar`) y crear, editar, borrar, mover y cubrir tareas del evento, siempre auditado y nunca escribiendo en `catalogo`. MUST NOT existir el alta de un cargo propio del evento. El jefe MAY ser titular de un cargo con sus propias tareas.
+#### Scenario: Crear Mesero 6
+- GIVEN un evento con `Mesero 1..5` copiados y 6 meseros en el equipo
+- WHEN el jefe crea "Mesero 6" con la tarea "Reponer hielo"
+- THEN el evento tiene un cargo `Mesero 6` sin `origenCatalogoId` con su tarea, hay una entrada `cargo.crear` y el catálogo no cambia
 
 #### Scenario: Renombrar solo en el evento
-- GIVEN un cargo `Portero` ya asignado
-- WHEN el admin lo renombra a `Portero principal` en el evento
+- GIVEN un cargo `Portero` copiado
+- WHEN el admin lo renombra a `Portero principal`
 - THEN el catálogo sigue con `Portero` y hay una entrada `cargo.editar`
 
-#### Scenario: Jefe titular
-- GIVEN el jefe es miembro del equipo
-- WHEN se asigna a sí mismo `Mesero 3`
-- THEN queda como titular y ve sus tareas
+#### Scenario: Permiso de lista en un cargo nuevo
+- GIVEN un cargo `Recepción 2` creado en el evento
+- WHEN el jefe le activa `manejaInvitados` y tiene titular Ana
+- THEN `equipo/Ana/cargoInvitadosId` apunta a ese cargo en el mismo PATCH
 
-#### Scenario: Asignar inactivo
-- GIVEN un usuario inactivo
-- WHEN se intenta asignar
-- THEN no es elegible
+### Requirement: Eliminar un cargo del evento
+
+Admin y jefe MAY eliminar un cargo del evento solo si **ninguna de sus tareas está `hecho`**; si alguna lo está, la app MUST pedir que primero se muevan esas tareas a otro cargo. Al eliminar, el mismo PATCH MUST borrar el cargo, sus tareas pendientes (se pierden; la UI avisa "Se borrarán N tareas pendientes; muévelas antes si las quieres conservar"), su `ocupacion` y el puntero `cargoInvitadosId` del titular si apuntaba a él, con la entrada `cargo.eliminar` que lista los títulos borrados.
+
+#### Scenario: Eliminar sin tareas hechas
+- GIVEN `Mesero 5` con 3 tareas pendientes y sin titular
+- WHEN el jefe lo elimina
+- THEN desaparecen el cargo y sus 3 tareas en un PATCH y hay una entrada `cargo.eliminar` con los títulos
+
+#### Scenario: Eliminar con tareas hechas
+- GIVEN `Mesero 2` con una tarea `hecho`
+- WHEN el admin intenta eliminarlo
+- THEN la app no lo permite y le pide mover primero la tarea hecha
+
+### Requirement: Mover tareas entre cargos ("desbaratar")
+
+Mientras el evento sea editable, admin y jefe MUST poder mover una tarea de un cargo a otro del mismo evento. Mover MUST cambiar solo `cargoId` de la misma tarea (mismo `tid`, mismo `estado`, mismo `auditId`), nunca copiarla, y MUST escribir en el mismo PATCH la entrada `tarea.mover` con `detalle {desde, hacia}`. Una tarea `hecho` que se mueve MUST seguir `hecho` y su marcado previo sigue en la auditoría. El destino MUST existir en el evento.
+
+#### Scenario: Mover a un cargo nuevo
+- GIVEN `Mesero 1` con "Lavar champaña" y un `Mesero 6` recién creado
+- WHEN el jefe mueve "Lavar champaña" a `Mesero 6`
+- THEN la tarea tiene el mismo id y `cargoId = Mesero 6`, ya no aparece en `Mesero 1` y hay una entrada `tarea.mover`
+
+#### Scenario: Mover una tarea hecha
+- GIVEN una tarea `hecho` de `Mesero 3`
+- WHEN el admin la mueve a `Mesero 4`
+- THEN sigue `hecho`, conserva su `auditId` y hay una entrada `tarea.mover` con el actor y la hora
+
+#### Scenario: Destino inexistente
+- GIVEN un PATCH que pone en `cargoId` un cargo que no existe en el evento
+- WHEN se envía
+- THEN se rechaza
+
+### Requirement: Un cargo, un titular
+
+Cada cargo del evento (copiado o creado) MUST tener a lo sumo un titular (`titularId`, miembro del equipo, registrado o `nr_`). La unicidad es LOCAL al evento: `eventos/{eid}/ocupacion/{cid} = mid` se escribe en el mismo PATCH que `titularId`, solo si está libre, y se borra al quitar el titular. Asignar un cargo ocupado MUST avisar "Ya está tomado por {nombre}" y las reglas MUST rechazar el PATCH. **Cambiar de titular** = quitar al actual y asignar al nuevo (dos PATCHes, cada uno auditado: `cargo.quitar_titular` y `cargo.titular`); el cargo conserva sus tareas y lo ya marcado. Un miembro MAY tener varios cargos. NO existe un cargo compartido por varias personas: si faltan cargos, se crean en el evento.
+
+#### Scenario: Asignar un cargo libre
+- GIVEN `Mesero 1` copiado sin titular y Ana en el equipo
+- WHEN el jefe se lo asigna a Ana
+- THEN en un PATCH `titularId = Ana`, `ocupacion/{cid} = Ana` y hay una entrada `cargo.titular` con `paraMid`
+
+#### Scenario: Cargo ya tomado
+- GIVEN `Mesero 3` con titular Ana
+- WHEN otro jefe, con la pantalla desactualizada, se lo asigna a Luis
+- THEN el PATCH recibe 403 y la app avisa que ya está tomado
+
+#### Scenario: Cambiar de titular
+- GIVEN `Mesero 3` con titular Ana y una tarea hecha
+- WHEN el jefe lo pasa a Luis
+- THEN se quita a Ana y se asigna a Luis, la tarea hecha sigue hecha, hay entradas `cargo.quitar_titular` y `cargo.titular`, y el puntero `cargoInvitadosId` se recalcula si el cargo tiene `manejaInvitados`
+
+#### Scenario: Siete personas, cinco cargos
+- GIVEN `Mesero 1..5` copiados y 7 meseros en el equipo
+- WHEN el jefe crea `Mesero 6` y `Mesero 7` en el evento y asigna los siete
+- THEN cada cargo tiene un solo titular
 
 #### Scenario: Titular fuera del equipo
 - GIVEN un `mid` que no está en `equipo`
 - WHEN se escribe como `titularId`
 - THEN la escritura se rechaza
 
+### Requirement: Tareas sin responsable
+
+Mientras el evento sea editable, las tareas "sin responsable" MUST ser las de cualquier cargo del evento sin titular, con titular quitado del equipo o con titular inactivo. Admin y jefe MUST poder resolverlas asignando un titular al cargo o moviendo las tareas a otro cargo (`tarea.mover`). Ya no hay tareas "derivadas" del catálogo: todo lo que el evento muestra está guardado en el evento. La cantidad sugerida por `configuracion-meseros` MUST ser solo un aviso que compara con la cantidad de cargos del evento con titular, sin cambiar nada.
+
+#### Scenario: Cuatro de cinco
+- GIVEN `Mesero 1..5` copiados, la sugerencia de 5 y titulares solo en `Mesero 1..4`
+- WHEN el jefe abre Tareas
+- THEN ve las tareas de `Mesero 5` en "Sin responsable" y puede moverlas a otro cargo o asignarle titular
+
+#### Scenario: Mesero inactivado
+- GIVEN un mesero titular de `Mesero 2` en un evento futuro
+- WHEN el admin lo inactiva
+- THEN sigue en el equipo marcado como inactivo y las tareas de `Mesero 2` aparecen "sin responsable"
+
 ### Requirement: Tareas del evento
 
-Cada tarea MUST pertenecer a un cargo del evento (`cargoId`) con `titulo`, `orden`, `estado` y opcional `origenCatalogoId`. Admin y jefe MUST crearlas, editarlas, moverlas y borrarlas, solo para ese evento y mientras el evento sea editable, con auditoría.
+Cada tarea MUST pertenecer a un cargo del evento (`cargoId`) con `titulo`, `orden`, `estado` y opcional `origenCatalogoId`. Admin y jefe MUST crearlas, editarlas, moverlas y borrarlas, solo para ese evento y mientras sea editable, con auditoría (`tarea.crear|editar|mover|eliminar`). El jefe MAY ser titular de un cargo.
 
 #### Scenario: Crear tarea
 - GIVEN un cargo existente del evento
@@ -173,7 +188,7 @@ Admin y jefe MUST poder marcar cualquier tarea del evento mientras sea editable 
 
 ### Requirement: Vista del mesero y seguimiento en vivo
 
-La UI MUST mostrar al mesero solo sus eventos y, dentro del evento, solo las tareas de su cargo (filtro de UI; las reglas no ocultan otros cargos del mismo evento). Un mesero no tiene eventos que se crucen en horario, así que ve un solo evento a la vez. Admin y jefe MUST ver en vivo qué tareas se hicieron, cuáles faltan y cuáles quedan "sin responsable".
+La UI MUST mostrar al mesero solo sus eventos y, dentro del evento, solo las tareas de su cargo (filtro de UI; las reglas no ocultan otros cargos del mismo evento). Admin y jefe MUST ver en vivo qué tareas se hicieron, cuáles faltan y cuáles quedan "sin responsable".
 
 #### Scenario: Filtro
 - GIVEN un evento con tareas de tres cargos y el mesero titular de uno

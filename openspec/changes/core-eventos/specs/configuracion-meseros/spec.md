@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Pantalla "Configuración" (`/app/admin/configuracion`, solo admin) donde se define cuántos meseros hacen falta según la cantidad de personas de un evento: intervalos o modo libre. La configuración solo produce una **sugerencia** de cuántos meseros necesita un evento, que la sección Cargos muestra como aviso comparándola con las personas que tienen un cargo `mesero` (ver `cargos-tareas`); no copia, no activa ni crea nada (Revisión 4: no se crean cargos por adelantado).
+Pantalla "Configuración" (`/app/admin/configuracion`, solo admin) donde se define cuántos meseros hacen falta según la cantidad de personas de un evento: intervalos o modo libre. La configuración solo produce una **sugerencia** de cuántos meseros necesita un evento, que la sección Cargos muestra como aviso comparándola con la cantidad de cargos del evento que tienen titular (Rev. 6: ya no hay `tipo` de cargo; ver `cargos-tareas`); no copia, no activa ni crea nada: si faltan, el jefe crea cargos en el evento a mano.
 
 ## Requirements
 
