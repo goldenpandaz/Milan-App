@@ -316,6 +316,9 @@ export class AuthService {
   private cargarPerfilYGuardar(auth: IdentityToolkitResponse): Observable<Sesion> {
     return this.leerPerfil(auth.localId, auth.idToken).pipe(
       map((perfil) => {
+        if (perfil.estado === 'inactivo') {
+          throw 'Tu cuenta está inactiva. Habla con el administrador.';
+        }
         const sesion: Sesion = {
           idToken: auth.idToken,
           refreshToken: auth.refreshToken,

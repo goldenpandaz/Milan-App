@@ -1,29 +1,86 @@
-<div class="space-y-5">
-  <h1 class="text-lg font-semibold">Equipo</h1>
-
-  <p *ngIf="cargando" class="text-sm text-black/40">Cargando…</p>
-
-  <div *ngFor="let usuario of equipo" class="rounded-xl border border-plata-200 bg-white p-4">
-    <div class="mb-3 flex items-center justify-between">
-      <div>
-        <p class="text-sm font-medium">{{ usuario.nombre }}</p>
-        <p class="text-xs text-black/40">{{ usuario.email }}</p>
-      </div>
-      <app-badge
-        [texto]="usuario.rol === 'administrador' ? 'Administrador' : usuario.rol === 'jefe_mesero' ? 'Jefe de meseros' : 'Mesero'"
-        [tono]="usuario.rol === 'administrador' ? 'plata' : 'neutro'"
-      />
-    </div>
-
-    <div *ngIf="usuario.rol !== 'administrador' && usuario.uid !== miUid" class="flex gap-2">
-      <select
-        [ngModel]="usuario.rol"
-        (ngModelChange)="cambiarRol(usuario, $event)"
-        class="flex-1 rounded-lg border border-plata-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-plata-500"
-      >
-        <option value="mesero">Mesero</option>
-        <option value="jefe_mesero">Jefe de meseros</option>
-      </select>
-    </div>
+<div class="space-y-8">
+  <div>
+    <h1 class="text-3xl font-bold tracking-tight text-plata-900">Equipo</h1>
+    <p class="mt-1 text-base text-black/50">Las personas del salón. Aquí las activas o inactivas y eliges al jefe de meseros. El cargo se asigna en cada evento.</p>
   </div>
+
+  <p *ngIf="error" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{{ error }}</p>
+  <p *ngIf="cargando" class="text-base text-black/40">Cargando…</p>
+
+  <ul *ngIf="!cargando" class="divide-y divide-plata-100 overflow-hidden rounded-3xl border border-plata-200 bg-white shadow-sm">
+    <li
+      *ngFor="let usuario of equipo"
+      class="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4 sm:px-6"
+      [class.bg-plata-50]="usuario.estado === 'inactivo'"
+    >
+      <div
+        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg font-semibold text-white"
+        [ngClass]="usuario.estado === 'inactivo' ? 'bg-plata-400' : 'bg-plata-900'"
+      >
+        {{ usuario.nombre.charAt(0).toUpperCase() }}
+      </div>
+
+      <div class="min-w-0 flex-1 basis-40">
+        <p class="truncate text-base font-semibold text-plata-900" [class.text-black]="usuario.estado === 'inactivo'" [class.opacity-60]="usuario.estado === 'inactivo'">
+          {{ usuario.nombre }}
+        </p>
+        <p class="truncate text-sm text-black/50">{{ usuario.email }}</p>
+      </div>
+
+      <div class="flex shrink-0 items-center gap-3">
+        <app-badge *ngIf="usuario.rol === 'administrador'" texto="Administrador" tono="plata" />
+        <app-badge *ngIf="usuario.rol === 'jefe_mesero' && usuario.estado === 'activo'" texto="Jefe de meseros" tono="plata" />
+
+        <ng-container *ngIf="usuario.rol !== 'administrador' && usuario.uid !== miUid">
+          <ng-container *ngIf="usuario.estado === 'activo'">
+            <button
+              *ngIf="usuario.rol !== 'jefe_mesero'"
+              (click)="pedirJefe(usuario)"
+              class="rounded-full border border-plata-300 bg-white px-4 py-2 text-sm font-medium text-plata-700 hover:bg-plata-100"
+            >
+              Hacer jefe
+            </button>
+            <button
+              *ngIf="usuario.rol === 'jefe_mesero'"
+              (click)="quitarJefe(usuario)"
+              class="rounded-full border border-plata-300 bg-white px-4 py-2 text-sm font-medium text-plata-700 hover:bg-plata-100"
+            >
+              Quitar jefe
+            </button>
+          </ng-container>
+
+          <span class="w-16 text-right text-sm text-black/50">{{ usuario.estado === 'activo' ? 'Activo' : 'Inactivo' }}</span>
+          <button
+            type="button"
+            role="switch"
+            [attr.aria-checked]="usuario.estado === 'activo'"
+            [attr.aria-label]="usuario.estado === 'activo' ? 'Inactivar' : 'Activar'"
+            (click)="alternarActivo(usuario)"
+            class="relative h-8 w-14 shrink-0 rounded-full transition-colors duration-200 motion-reduce:transition-none"
+            [ngClass]="usuario.estado === 'activo' ? 'bg-plata-900' : 'bg-plata-300'"
+          >
+            <span
+              class="absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform duration-200 motion-reduce:transition-none"
+              [class.translate-x-6]="usuario.estado === 'activo'"
+            ></span>
+          </button>
+        </ng-container>
+      </div>
+    </li>
+  </ul>
 </div>
+
+<app-modal [abierto]="!!aDesignar" titulo="Cambiar jefe de meseros" (cerrar)="aDesignar = null">
+  <p class="mb-6 text-base text-black/70">
+    Solo puede haber un jefe de meseros. <span class="font-semibold">{{ aDesignar?.nombre }}</span> pasará a serlo y
+    <span class="font-semibold">{{ jefeActual?.nombre }}</span> volverá a ser trabajador.
+  </p>
+  <div class="flex gap-3">
+    <button (click)="aDesignar = null" class="flex-1 rounded-xl border border-plata-300 py-3.5 text-base text-plata-700">
+      Cancelar
+    </button>
+    <button (click)="confirmarJefe()" class="flex-1 rounded-xl bg-black py-3.5 text-base font-semibold text-white">
+      Confirmar
+    </button>
+  </div>
+</app-modal>
