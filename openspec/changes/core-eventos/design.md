@@ -1,218 +1,395 @@
 # Design: core-eventos
 
-## Technical Approach
+> **Revisión 5 (rediseño de la lista de invitados y permisos, 2026-10-15; manda sobre todo lo anterior en lo que toque):** (1) Roles fijos: administrador, jefe_mesero y trabajador (id interno `mesero`, etiqueta "Trabajador"); el tipo de cargo `portero` desaparece ("Portero" es un cargo `libre`). (2) Permiso por cargo `manejaInvitados` (catálogo → snapshot) con puntero `equipo/{mid}/cargoInvitadosId` re-verificado por las reglas; se eliminan `portero`, `verInvitados`, `invitadosTodos` y la ventana de 10 min. (3) El .xlsx se lee en el navegador y cada invitado es un registro (`invitados/{eid}/lista/{gid}`); ya no se guarda el base64 (D9, D10 y D24 reescritas; nuevas D25 parser, D26 fusión en re-subida, D27 marcado de asistencia). (4) La duda Q19 (¿la lista cuenta como "dato" para el borrado?) queda abierta. V7 y V13 se redefinen; nuevas V18–V20; filas i, k y l de "Viabilidad de reglas".
+>
+> **Revisión 4 (auditoría adversarial, 2026-10-15; manda sobre todo lo anterior):** (1) Q10 resuelta por el usuario: los cargos del catálogo sin titular en un evento se muestran con sus tareas como "sin responsable" (vista **derivada**, no se persiste nada) y admin/jefe las reasignan copiando la tarea a un cargo del evento; se eliminan "activar cargos", `activarSinTitular`, `cargo.activar` y el stepper. (2) Se elimina "cargo propio del evento" (`crearPropio`, ex Q15): el usuario dijo que NO es una opción. (3) `ocupacion/{ccid}` pasa a guardar el `cid` del snapshot (índice escrito una sola vez), y el titular es el campo único `cargos/{cid}/titularId`: "liberar y ocupar en el mismo PATCH" era imposible (un PATCH no puede tener la misma ruta dos veces). (4) `actividad` se escribe en **todo** marcado (idempotente) y no se puede borrar salvo con el evento. (5) El marcado del mesero queda acoplado a su entrada de auditoría por reglas (`tareas/{tid}/auditId`). (6) Varios agujeros de reglas cerrados (ver "Viabilidad de reglas" al final).
+>
+> **Revisión 3 (reemplaza lo que contradiga abajo):** el catálogo es plantilla y el evento guarda un snapshot por cargo al asignarlo a una persona (D15 y D20 reemplazadas; nuevas D21–D24); el estado del evento se deriva del reloj (sin `estado` guardado); reactivar solo admin; archivar; invitados con ventanas horarias; **desmontaje, montaje e inventario quedan fuera del núcleo** (D6 y D7 pospuestas, sin borrar su contenido). Ver "Revisión 3" en `proposal.md`.
+>
+> Revisión 2: dos niveles (catálogo GENERAL de cargos + nivel POR EVENTO), copia snapshot catálogo → evento, "Equipo" conserva su nombre y ruta, borrar eventos solo admin, configuración de meseros por cantidad de personas (solo admin) con sugerencia al copiar, slices re-planificados (0, 1, 2, 2B, 3–7). Ver el changelog en `proposal.md`.
 
-Evento -> Equipo -> Cargos -> Tareas, with the real permissions in `database.rules.json`. Everything still goes over REST through `RtdbService`. Every mutation is **one multi-path PATCH at the root** (`PATCH /.json`). That PATCH holds the domain change and its audit entry, and the client generates the pushIds. Domain logic lives in **pure functions** under `src/app/core/logica/` (numbering, permissions, portero flags, patch building, base64, push ids), so it can be unit tested without HTTP. Services stay thin: they read, call pure builders and send one PATCH. Pages follow container/presentational: one container per route and presentational children with `@Input/@Output`.
+## Enfoque técnico
 
-## Architecture Decisions
+Dos niveles:
 
-| # | Topic | Choice | Rejected | Rationale |
+- **General** (independiente de los eventos): "Equipo" (usuarios globales, solo admin), "Cargos" (catálogo global de cargos con sus tareas, admin y jefe) y "Configuración" (intervalos personas → meseros o modo libre, solo admin).
+- **Por evento** ("Ingresar"): Evento → Equipo del evento → Cargos del evento (snapshot de un cargo del catálogo, creado al asignarlo a una persona; editable solo para ese evento) → Tareas, con los permisos reales y el ciclo de vida por tiempo hechos cumplir en `database.rules.json`.
+
+Todo sigue yendo por REST a través de `RtdbService`. Cada mutación de un evento es **un PATCH multi-path a la raíz** (`PATCH /.json`) que lleva el cambio de dominio y su entrada de auditoría; los pushIds se generan en el cliente. La lógica de dominio vive en **funciones puras** en `src/app/core/logica/` (numeración, permisos, puntero de la lista de invitados, armado de patches, snapshot de un cargo al asignarlo, tareas sin responsable, ciclo de vida, parser y fusión de la lista de invitados, push ids) para testearla sin HTTP. Los servicios quedan finos: leen, llaman a los builders puros y mandan un PATCH. Las páginas siguen container/presentational: un container por ruta e hijos presentacionales con `@Input/@Output`.
+
+## Decisiones de arquitectura
+
+| # | Tema | Elección | Descartado | Motivo |
 |---|---|---|---|---|
-| D1 | Atomicity | `PatchBuilder` + `RtdbService.patchRaiz(updates)` (PATCH `/.json`) | Sequential PATCHes (the old `TaskService.asignar`) | All-or-nothing writes. Each leaf is checked against its own rules. Denormalized flags can't drift. |
-| D2 | Ids | Pure `generarPushId(now, rand)` using Firebase's algorithm (8 time chars + 12 random chars) | `POST` (server id), the current `generarId()` | Ids must exist before the PATCH. They sort by time, which audit ordering needs. Clock and random are injectable for tests. |
-| D3 | Rule helpers | Expressions inlined in the JSON, copied from the canonical table below | A template plus a Node generator script; Bolt (deprecated) | RTDB rules have no functions. A generator adds a build step that someone will forget. The deployed file stays readable. |
-| D4 | Jefe/admin event list | `GET eventos?shallow=true` for the keys, then `forkJoin` of `eventos/{eid}/info` | Full `GET eventos` (today's `listar()`); a separate `eventosIndice` node | No full-tree download and no extra denormalized node. N small GETs is fine at salon scale. |
-| D5 | Mesero discovery | `GET membresias/{uid}` for the keys, then `forkJoin` of `eventos/{eid}/info` | `orderByChild` on `equipo` (rules don't filter queries, and a deep index isn't possible); read everything | This is the only way that works with `.read` restricted per event. |
-| D6 | Inventory scope | Global per salon: `inventario/{itemId}` with `eventoId` = the event the edit happened under (it drives the permission). Soft delete with `archivado: true`. Full snapshot into the audit on finalize. | Per event (`eventos/{eid}/inventario`), which duplicates the list on every event; hard delete | The salon's stock is a single list. With soft delete, every write carries `newData.eventoId`, so one rule branch covers it (a delete has no `newData`). |
-| D7 | Inventory `estado` | **PENDING USER DECISION.** Optional string field `estado?: EstadoInventario`. The values come from one constant `ESTADOS_INVENTARIO`, used by the UI and copied into the rule regex. | Booleans `hay` / `noHay` | Both options fit: 3 values (`hay\|queda_poco\|no_hay`), or 2 exclusive checkboxes (`hay\|no_hay`, with the field absent meaning unchecked). Switching means changing 1 constant and 1 regex. |
-| D8 | Inactive users | (a) Every rule ANDs `ACTIVO`. (b) `usuarios/{uid}` stays readable by its owner. (c) `AuthService` finds `estado==='inactivo'` at login or refresh, calls `signOut` and `logout`, and throws the tuteo message. (d) `authGuard` requires `sesion.estado==='activo'`. (e) An HTTP interceptor catches a 401/403 from RTDB, runs `refrescarSesion()`, and logs out if the user is now inactive. | Rules only | Rules are the real lock. The client gives a clear message. Self-read is needed to tell "inactive" apart from "no profile". |
-| D9 | Invitados blob | `invitados/{eid}/meta` (`nombreArchivo, tamano, subidoPor, subidoEn`) plus `invitados/{eid}/base64` | Flat node (proposal table) | REST `shallow` does not return primitive values, so to show the file name without downloading 1.4 MB, the metadata needs its own path. This is a small refinement of the proposal. |
-| D10 | Base64 | No dependency. Upload: check `file.size <= 1_048_576`, then `FileReader.readAsDataURL`, then strip the `data:*;base64,` prefix. Download: `atob` -> `Uint8Array` -> `Blob(xlsx MIME)` -> `URL.createObjectURL` -> `<a download>` -> `revokeObjectURL`. Only when `isPlatformBrowser`. | SheetJS; Storage | Out of scope and no new services. Byte-identical round trip. |
-| D11 | Legacy pages | Slice 2 **deletes** Tareas, Asignar, Inventario (pages, routes, guard, services). Slices 3 and 4 rebuild them from scratch. | Keep them alive by re-implementing `obtenerVigente` | Once slice 2's rules restrict `eventos`, those pages get 403. Keeping them alive means writing throwaway code. The DB has no events. **Tradeoff:** if the salon is working events, ship slices 2 and 3 in the same release. |
-| D12 | Info edits | Always leaf paths (`eventos/E/info/nombre`), never a PUT of the whole `info` | PUT of `info` | A PUT would wipe `cargoDesmontajeId` and `invitadosTodos`. |
-| D13 | "Users" vs "team" | Rename `page/admin/equipo` to `page/admin/usuarios`; route `/app/admin/usuarios`; nav label "Usuarios" | Keep "Equipo" | "Equipo" now means a single event's team. |
+| D1 | Atomicidad | `PatchBuilder` + `RtdbService.patchRaiz(updates)` (PATCH `/.json`) | PATCHes secuenciales (el viejo `TaskService.asignar`, el `EventService.eliminar` actual) | Todo o nada. Cada hoja se valida contra sus reglas. Los flags denormalizados no se desincronizan. |
+| D2 | Ids | `generarPushId(now, rand)` puro con el algoritmo de Firebase (8 chars de tiempo + 12 random) | `POST` (id del server), el `generarId()` actual | Los ids tienen que existir antes del PATCH. Ordenan por tiempo, lo que necesita la auditoría. Reloj y random inyectables para tests. |
+| D3 | Helpers de reglas | Expresiones inline en el JSON, copiadas de la tabla canónica | Template + script generador; Bolt (deprecado) | Las RTDB rules no tienen funciones. Un generador agrega un paso de build que alguien va a olvidar. |
+| D4 | Lista de eventos (jefe/admin) | `GET eventos?shallow=true` para las claves, luego `forkJoin` de `eventos/{eid}/info` | `GET eventos` completo (el `listar()` actual); nodo `eventosIndice` | Sin bajar el árbol entero ni nodo denormalizado extra. N GETs chicos alcanzan a escala de un salón. |
+| D5 | Descubrimiento del mesero | `GET membresias/{uid}` para las claves, luego `forkJoin` de `eventos/{eid}/info` | `orderByChild` sobre `equipo` (las reglas no filtran consultas); leer todo | Es la única forma que funciona con `.read` restringido por evento. |
+| D6 | **[POSPUESTA, no implementar: inventario fuera del núcleo en Rev. 3]** Alcance del inventario | Global del salón: `inventario/{itemId}` con `eventoId` = evento bajo el que se hizo la edición (define el permiso). Borrado lógico con `archivado: true`. Snapshot completo en la auditoría al finalizar. | Por evento (`eventos/{eid}/inventario`), duplica la lista; borrado físico | El stock del salón es una sola lista. Con borrado lógico toda escritura trae `newData.eventoId` y una sola rama de la regla lo cubre. Lectura: cualquier activo (Q6). |
+| D7 | **[POSPUESTA, no implementar]** `estado` del inventario | **PENDING USER DECISION (Q1).** Campo opcional `estado?: EstadoInventario` con valores de una constante `ESTADOS_INVENTARIO`, usada por la UI y copiada en el regex de la regla. Default: 3 valores. | Booleans `hay` / `noHay` | Sirven ambas: 3 valores (`hay\|queda_poco\|no_hay`) o 2 checkboxes excluyentes (`hay\|no_hay`, ausente = sin marcar). Cambiar = 1 constante y 1 regex. |
+| D8 | Usuarios inactivos | (a) Toda regla hace AND con `ACTIVO`. (b) `usuarios/{uid}` sigue legible por su dueño. (c) `AuthService` detecta `estado==='inactivo'` en login o refresh, hace `signOut` + logout y lanza el mensaje en tuteo. (d) `authGuard` exige `sesion.estado==='activo'`. (e) Un interceptor HTTP atrapa 401/403 de la RTDB, corre `refrescarSesion()` y desloguea si quedó inactivo. | Solo reglas | Las reglas son el bloqueo real; el cliente da un mensaje claro. La auto-lectura distingue "inactivo" de "sin perfil". |
+| D9 | **[Rev. 5]** Forma de la lista de invitados | Nodo raíz propio `invitados/{eid}` con `meta` (`nombreArchivo, total, subidoPor, subidoEn`) y `lista/{gid}` (`nombre, nombreNorm, mesa?, orden, asistio, asistioPor?, asistioEn?, auditId?, removido?`), un registro por invitado. `gid` = pushId del cliente. | ~~Blob base64 del .xlsx~~ (Rev. 3); lista dentro de `eventos/{eid}`; un array | Fuera de `eventos` porque la lectura de `eventos/$eid` del miembro baja en cascada y no se puede revocar: la lista tiene su propia ventana. Un registro por invitado = marca atómica por path, concurrencia sin conflictos entre invitados distintos y regla por hoja. Mapa con pushId (no array) por la misma razón que D19. ~300 registros × ~200 B ≈ 60 KB: un `GET lista` es barato. |
+| D10 | **[Rev. 5]** Lectura del .xlsx | En el navegador, con **`read-excel-file`** (MIT, solo lectura de .xlsx) cargado con `import()` dinámico solo en la pantalla de subida del admin y solo con `isPlatformBrowser`. Adaptador `lector-xlsx.ts` que devuelve `unknown[][]` de la primera hoja (y los nombres de las otras para el aviso) y traduce cualquier excepción a `ArchivoInvalidoError`. Antes de leer: extensión `.xlsx` y `file.size <= 1_048_576`. El archivo original **no se guarda**. Exportar (opcional) con `write-excel-file` (mismo autor, MIT). | SheetJS desde npm (`xlsx@0.18.5`: CVE-2023-30533 prototype pollution al leer archivos y CVE-2024-22363 ReDoS; las versiones corregidas solo se publican en `cdn.sheetjs.com`, fuera del registro npm); SheetJS CE 0.20.x desde el CDN (Apache-2.0; opción válida si hiciera falta .xls/.csv, pero instalar por URL de tarball complica auditar dependencias); ExcelJS (MIT, pesado y pensado para Node, mantenimiento lento); backend o Cloud Function (sin servicios nuevos) | Liviana, sin servidor, lazy (no pesa en el bundle inicial). El archivo lo sube solo el admin (fuente de confianza baja en riesgo), pero igual se elige una librería sin CVE de prototype pollution conocido. **Verificar al instalar** (tarea 5.7): versión vigente, licencia y `npm audit`. |
+| D11 | Páginas legacy | Slice 2 **borra** la página Tareas (`page/tareas/tareas.component.*`, el menú pasa a Cargos), la página y el guard de Inventario y `inventory.service.ts` (no los enlaza el menú; dependen de `obtenerVigente`); **no se re-crean** (inventario pospuesto, Rev. 3). Slice 4 **borra** Asignar (`page/tareas/asignar/*`), `task.service.ts` viejo, `listarParticipantes`, `obtenerVigente`, `generarId`, el modelo `Participante` y la regla `participantes`. | Mantenerlas vivas reimplementando `obtenerVigente` | Cuando el slice 3 restringe la lectura de `eventos` y el 4 cambia `tareas`, esas páginas dan 403. Mantenerlas = código descartable. **Tradeoff:** entre los slices 2 y 4 el mesero no tiene vista de tareas; si el salón trabaja eventos reales, los slices 2, 3, 3B y 4 salen juntos. |
+| D12 | Edición de `info` | Siempre paths de hoja (`eventos/E/info/nombre`), nunca un PUT de `info` | PUT de `info` | Un PUT borraría `personas`, `reabierto*` y `archivado*` (y además las reglas de `info` se conceden por hoja, D21). |
+| D13 | "Equipo" global vs equipo del evento | **Se conserva** `page/admin/equipo`, ruta `/app/admin/equipo` y etiqueta "Equipo" en el menú. El equipo de un evento es la sección "Equipo del evento" dentro del detalle (`/app/eventos/:eid/equipo`). | Rename a "Usuarios" (Revisión 1) | Decisión del usuario. La ambigüedad se resuelve por contexto: menú = global, detalle = evento. |
+| D14 | Forma del catálogo | **Anidado**: `catalogo/cargos/{ccid}` con `tareas/{ctid}` adentro | Plano (`catalogo/tareas/{ctid}` con `cargoId`), como el evento | Reglas: un solo nivel, admin y jefe leen y escriben todo (no hay permiso por hoja como el del mesero en el evento). Tamaño: un salón tiene decenas de cargos y pocas tareas por cargo; un `GET catalogo` es chico. Borrar un cargo arrastra sus tareas en un solo path, sin huérfanas ni validación cruzada de `cargoId`. El evento queda **plano** porque la regla del titular necesita `tareas/$tid/estado` + lookup por `cargoId` y mover tareas entre cargos es cambiar un campo. El snapshot al asignar traduce anidado → plano en una función pura (D22). |
+| D15 | **[REEMPLAZADA por D22 en Rev. 3]** Catálogo → evento | ~~Copia snapshot explícita de todo el catálogo ("Copiar cargos del catálogo")~~ Ahora el snapshot es **por cargo, al asignarlo a una persona** (D22). Se conserva: ids nuevos en el evento y `origenCatalogoId` (solo trazabilidad, puede quedar colgando). | Referencia viva al catálogo; copiar el catálogo entero; crear cargos por evento por adelantado | La referencia viva cambiaría eventos pasados al editar el catálogo y rompería la auditoría. Copiar todo crea cargos y tareas que quizá nadie ocupe (4 de 5 meseros). |
+| D16 | Navegación del detalle | `/app/eventos/:eid` = container `EventoDetalleComponent` con rutas hijas por sección (`equipo`, `cargos`, `asignacion`, `tareas`, `invitados`, `auditoria`; `inventario` pospuesto) y una barra de secciones filtrada por rol. Default: admin/jefe → `equipo`; mesero → `tareas`. | Tabs en un solo componente | Las rutas hijas permiten guards por sección (`rolGuard`) y links directos. |
+| D17 | Borrar evento | Solo admin, y **no un evento pasado con datos (ese se archiva, D23)**. Un PATCH: `eventos/E: null`, `membresias/{uid}/E: null` por cada registrado, `invitados/E: null`, auditoría `evento.borrar` (queda huérfana, legible por clave). Regla: `eventos/$eid .write = ADMIN && !newData.exists() && (!data.child('actividad').exists() || now <= data.child('info/finTs').val())` (falla cerrada: con `actividad` y sin `finTs` niega); `info` por hojas (D21), y las hojas obligatorias de `info` no se pueden borrar sueltas (si no, el admin podría borrar `finTs` y luego el evento). | La cascada secuencial actual (`participantes`/`tareas`/`inventario` y `info` al final) | Atómico, así el orden "info al final" ya no hace falta. **Ojo:** con las reglas actuales ningún nodo otorga `.write` a nivel `eventos/$eid/participantes\|tareas\|inventario`, así que la cascada implementada probablemente da 403 (sin verificar): el slice 1 la pasa a un solo PATCH. |
+| D18 | Menú | Admin: Eventos · Equipo · Cargos · Configuración. Jefe: Eventos · Cargos (Equipo solo admin, Q5). Mesero: Eventos. | Ítems "Tareas", "Mis tareas", "Asignar" | Decisión del usuario: la asignación y las tareas viven dentro del evento. |
+| D19 | Forma de la configuración de meseros | Un solo nodo `config/meseroRangos = {modo: 'rangos'\|'libre', rangos: {rid: {desde, hasta?, meseros}}, actualizadoPor, actualizadoEn}`. `rangos` es un **mapa con pushId**, no un array. `hasta` ausente = abierto ("o más"). Se guarda **entero** (un `patchRaiz` con `config/meseroRangos` completo) desde un formulario con "Guardar". Superposiciones, `desde <= hasta`, enteros positivos y "solo el último abierto" los valida la función pura `validarRangos` antes de guardar; las reglas validan tipos y `desde <= hasta` por intervalo. `modo: libre` conserva los rangos guardados (volver a `rangos` no los pierde). | Array JSON (`rangos: [...]`); un nodo por intervalo editado por separado; `config/` plano con claves sueltas | La RTDB convierte arrays en objetos con índices y borrar uno del medio deja huecos o reindexa: frágil. Guardar todo junto hace que la validación de conjunto (sin superposición) se aplique a un estado completo y consistente. `config/` como raíz deja lugar para otras configuraciones globales con la misma regla de lectura. Sin auditoría por evento (Q4): `actualizadoPor/En`. |
+| D20 | Sugerencia de meseros | Función pura `sugerirMeseros(config, personas): number \| null` (sin cambios): `null` si `modo === 'libre'`, si `personas` falta o no es entero positivo, si no hay config, o si ningún intervalo contiene `personas`; si no, `meseros` del intervalo que cumple `desde <= personas && (hasta == null \|\| personas <= hasta)`. **Rev. 4:** ya no alimenta una copia del catálogo ni "activa" cargos (no se crean cargos por adelantado); solo alimenta el aviso de la sección Cargos "Para 150 personas se sugieren 8 meseros; tienes 6" (6 = personas con un cargo `mesero` asignado). Nunca cambia nada solo. Se eliminan `construirCopiaCatalogo`, el stepper "Activar cargos" y la regla "clonar la última plantilla" (Q7); los que sobran toman `Apoyo` (D22). | Ajuste automático al cambiar `personas` | El ajuste automático pisaría decisiones del jefe y rompería el snapshot. |
+| D21 | Ciclo de vida del evento por tiempo | **Estado derivado del reloj**, sin campo `estado` ni cron. `info` guarda `fechaInicio`/`fechaFin` (ISO local; `fechaFin` ya cae al día siguiente si `horaFin <= horaInicio`) e `inicioTs`/`finTs` (epoch ms) calculados por la función pura `calcularInstantes(fecha, horaInicio, horaFin)`. Tramos: antes de `inicioTs` solo lectura; `[inicioTs, finTs + 2 h]` los meseros marcan; `(finTs + 2 h, finTs + 4 h]` meseros cerrados, admin/jefe aún editan; `> finTs + 4 h` **finalizado e inmutable**. `reabierto: true` (solo admin) mantiene abierto para admin/jefe hasta que el admin llama a Finalizar (quita el flag); los meseros siguen sin marcar. Reglas: `ventanaMesero = now >= info/inicioTs && now <= info/finTs + 7200000`; `editable = now <= info/finTs + 14400000 \|\| info/reabierto === true`; toda escritura de `info`, `equipo`, `cargos`, `tareas`, `ocupacion`, `actividad` y `membresias` exige `editable` (o `CREANDO` en la creación), y el marcado del mesero exige `ventanaMesero`. Los helpers leen `root` (estado previo): un PATCH que cambie `finTs` no se habilita a sí mismo. Con `inicioTs`/`finTs` ausentes la aritmética falla y la regla niega (falla cerrada, V2). Un evento pasado con `actividad` congela sus fechas (`inicioTs/finTs/fechaInicio/fechaFin` no se editan), para que nadie lo "mueva al futuro" y lo borre. La UI refleja el mismo cálculo con `estadoEvento(info, ahora)`. | Campo `estado` escrito por un cron/Cloud Function; guardar solo la UI | No hay servidor ni cron (sin servicios nuevos). Las reglas tienen `now`, así que la ventana la hace cumplir el servidor. **Tradeoff:** `inicioTs/finTs` los calcula el cliente con su zona horaria (un solo salón); solo admin/jefe escriben `info`. |
+| D22 | Asignación de cargos con snapshot | El catálogo es plantilla; el evento solo **persiste** los cargos que alguna vez se asignaron a una persona. `construirAsignacion` crea en un PATCH: `eventos/E/cargos/{cid}` = `{nombre, tipo, orden, manejaInvitados, titularId, origenCatalogoId}` y sus `tareas/{tid}` (ids nuevos, `estado = pendiente`), más `ocupacion/{ccid} = cid` (solo cargos no `apoyo`) y la auditoría `cargo.titular`. **Unicidad**: `ocupacion/{ccid}` es un índice de snapshot **escrito una sola vez** (`!data.exists()`), así dos admins/jefes que asignan el mismo cargo a la vez no pueden crear dos snapshots (el segundo PATCH entero da 403). El titular es el campo único `cargos/{cid}/titularId`: un cargo tiene a lo sumo una persona por construcción. **Cambiar de titular** = actualizar `titularId` del snapshot existente (conserva las tareas y lo ya marcado) + puntero `cargoInvitadosId` (Rev. 5, `punteroLista`) + auditoría, en un PATCH. **Quitar titular** = borrar `titularId` (el snapshot queda y sus tareas pasan a "sin responsable"). **Deshacer asignación** (`cargo.eliminar`) = borrar el cargo, sus tareas y `ocupacion/{ccid}` en un PATCH, solo si ninguna tarea está `hecho` (chequeo de cliente). Volver a asignar un cargo cuyo snapshot existe sin titular reutiliza ese snapshot (no crea otro). **`Apoyo`** (`tipo: apoyo`) no usa `ocupacion`: cada persona recibe su propio cargo con su propia copia de las tareas genéricas. **Menos personas que cargos (Q10 resuelta)**: `tareasSinResponsable(catalogo, cargos, tareas, equipo, usuarios)` devuelve (a) las tareas de snapshots sin titular, con titular fuera del equipo o inactivo, y (b) **vista derivada, sin escribir nada**: por cada cargo del catálogo no `apoyo` sin snapshot en el evento (por `origenCatalogoId`), sus tareas cuyo `ctid` no fue ya cubierto (ninguna tarea del evento tiene ese `origenCatalogoId`). Admin/jefe reasignan: (a) con `tarea.mover` (cambia `cargoId`); (b) con `tarea.cubrir` (copia esa tarea del catálogo como tarea nueva del cargo destino, con `origenCatalogoId = ctid`). Nunca se toca el catálogo ni se crea un cargo. La parte (b) solo se calcula mientras el evento es editable: un evento finalizado muestra únicamente lo que guardó (lo pasado no cambia aunque cambie el catálogo). | Crear todos los cargos del catálogo en el evento; "activar" cargos sin titular por adelantado; "Mesero 6" inventado; referencia viva; `ocupacion = mid` con "liberar y ocupar en el mismo PATCH" (imposible: un PATCH no puede llevar la misma ruta dos veces y la regla ve el valor final) | Evita cargos y tareas fantasma, respeta el snapshot y la unicidad queda garantizada por reglas. **Tradeoff:** dos jefes que "cubren" la misma tarea a la vez pueden duplicarla (bajo; la UI relee antes de escribir). |
+| D23 | Archivar vs. borrar | `info.archivado` (+`archivadoPor/En`), solo ADMIN, oculta el evento de la lista principal sin borrar nada (no cambia permisos de lectura). "Tiene datos" = existe `eventos/{eid}/actividad` (`true`), que se escribe en el mismo PATCH de **todo** marcado de una tarea (propio o delegado; idempotente, así no hay que detectar "el primero" ni hay carreras); su `.write` exige `newData.val() === true`, así que no se puede desfijar (los `.validate` no corren en borrados; por eso la condición va en `.write`), y solo desaparece si el admin borra el evento entero. Las reglas la leen para impedir el borrado de un evento pasado con actividad. Borrar queda permitido para futuros y pasados sin actividad (Q11). **Reactivar** (`reabierto*`) y archivar son solo ADMIN: son hojas `info/reabierto*` y `info/archivado*` con `.write = ADMIN`, sin exigir `editable` (para poder reabrir uno finalizado). | Detectar datos recorriendo `tareas`/`auditoria` (las reglas no iteran); contar la auditoría (siempre existe `evento.crear`) | Un flag denormalizado es lo único que las reglas pueden consultar en O(1). |
+| D24 | **[Rev. 5]** Acceso a la lista por cargo y ventana | Quién: admin, jefe y "titular de lista" = titular de un cargo del evento con `manejaInvitados = true`. Como las reglas no pueden recorrer `cargos`, el miembro guarda el puntero `equipo/{mid}/cargoInvitadosId = cid` (lo calcula la función pura `punteroLista(cargos, mid)` y se escribe en el mismo PATCH de asignar, cambiar/quitar titular, deshacer, quitar miembro o cambiar el permiso del cargo). Su `.validate` exige que el cargo apuntado (en el post-estado) tenga `manejaInvitados === true` y `titularId === $mid`; además la regla de lectura **re-verifica** el cargo apuntado en `root` (`TITULAR_LISTA`), así un puntero viejo no abre (falla cerrada, V2). Ventana (`VENTANA_LISTA`): desde `inicioTs − 1 h`; jefe mientras `EDITABLE` (incluye reabierto); titular de lista hasta `finTs + 4 h` (no en reabierto, como los meseros con las tareas); admin siempre. `meta` sin ventana para los tres. `invitados/$eid .write = ADMIN` (crear, borrar, renombrar, re-subir: en cualquier momento); el `.read` no se concede en `invitados/$eid` para que la cascada no abra `lista`. | Flags `portero`/`verInvitados`/`invitadosTodos` (Rev. 3, eliminados); índice aparte `accesoLista/{uid}`; solo UI | Un puntero re-verificado es la única forma O(1) de que las reglas sepan si alguien tiene "algún cargo con el permiso"; si se desincroniza, solo puede quitar acceso, nunca darlo. |
+| D25 | **[Rev. 5]** Parser de la lista | Función pura `parsearListaInvitados(filas: unknown[][]): ResultadoParseo` (`{invitados: {nombre, nombreNorm, mesa \| null, orden}[], porMesa, avisos, errores}`), sin dependencias. Detecta: (1) encabezados `nombre`/`mesa`; (2) bloques en la columna A, donde una celda cuyo texto (trim, sin tildes, mayúsculas) **empieza con `MESA`** abre mesa; (3) lista simple sin títulos → mesa null. `normalizarNombre` (trim + espacios simples) y `claveNombre` (además sin tildes y minúsculas) en `normalizar.ts`, compartidas con la búsqueda y la fusión. Duplicados se conservan con aviso; no-texto, nombres > 120 caracteres, mesas vacías, otras hojas/columnas: aviso; sin invitados, más de `MAX_INVITADOS = 500` o archivo ilegible: error (no se puede confirmar). Casos en `invitados-evento`. | Deduplicar solo; regex estricta de títulos (`^MESA (\d+\|PRINCIPAL)$`) | Las reglas del usuario, tal cual. **Riesgo:** un invitado cuyo nombre empiece con el apellido "Mesa" (p. ej. "Mesa Rodríguez Ana") se tomaría como título; la previsualización lo deja ver (aparecería una mesa rara con 0 o pocos invitados) y el admin cancela y corrige el archivo. |
+| D26 | **[Rev. 5]** Re-subida = fusión | Función pura `fusionarLista(actuales, nuevos, idGen): {updates por hoja, resumen}`: (1) pareja por `claveNombre` + mesa normalizada (en orden de `orden` si hay repetidos); (2) entre los sin pareja, pareja por `claveNombre` si es único en ambos lados; (3) emparejado: conserva `gid` y asistencia, se reescriben solo `nombre`, `nombreNorm`, `mesa`, `orden` y se borra `removido` (nunca las hojas de asistencia); (4) nuevo: registro completo con `asistio = false`; (5) actual sin pareja con `asistio`: `removido = true` (Q20); (6) actual sin pareja sin asistencia: `null`. Un PATCH con todo + `meta` + `invitados.reemplazar` (resumen: conservados, nuevos, removidos con marca, borrados). El servicio relee `lista` justo antes de calcular. | PUT de `invitados/E/lista` entero (pisaría marcas hechas mientras tanto); emparejar solo por nombre | Escribir por hoja y nunca las hojas de asistencia hace que una marca concurrente sobre un emparejado no se pierda. **Riesgo aceptado:** si alguien marca a un invitado que la fusión va a borrar (sin pareja y sin marca en la lectura) entre la lectura y el PATCH, el registro se borra; la marca queda en la auditoría. Ventana de milisegundos y solo en re-subidas. |
+| D27 | **[Rev. 5]** Marcado de asistencia | `InvitadosService.marcar(eid, invitado, asistio)` = un PATCH: `lista/G/asistio`, `asistioPor = uid`, `asistioEn = {'.sv':'timestamp'}`, `auditId = aid` y `auditoria/E/aid` (`invitado.asistencia`, `objetivo = G`, `detalle {asistio, nombre}`). Para el titular de lista, acople por reglas como en V15 (`auditId` nuevo ↔ entrada `invitado.asistencia` que apunta a `G`). **Decisión explícita: usa la ventana de la lista, no la de tareas** (`VENTANA_MESERO` = inicio a fin + 2 h): los invitados empiezan a llegar antes del inicio y el control de puerta puede seguir después del horario; atarlo a las tareas dejaría la lista inútil en la primera hora. Concurrencia: cada invitado es un path propio, así que marcas sobre invitados distintos nunca chocan; sobre el mismo invitado gana la última escritura y las dos quedan auditadas. **No** escribe `actividad` (Q19 abierta; si se decide que sí, se suma `actividad = true` al PATCH y la regla de `actividad` agrega la rama `TITULAR_LISTA && VENTANA_LISTA`). | Transacción / ETag por invitado (no compone con el PATCH multi-path); misma ventana que las tareas | Simple, atómico por invitado y auditado. |
 
-## RTDB Schema (final)
+## Esquema RTDB (final)
 
-| Path | Fields (types) | Notes |
+| Path | Campos (tipos) | Notas |
 |---|---|---|
-| `usuarios/{uid}` | `nombre, email, rol, estado: activo\|inactivo, creadoEn, estadoCambiadoPor?, estadoCambiadoEn?` | Admin-only change of `rol`/`estado` (global audit = Open Q) |
-| `eventos/{eid}/info` | `nombre, fechaInicio, fechaFin` (`YYYY-MM-DDTHH:mm`), `estado: programado\|en_curso\|finalizado, cargoDesmontajeId?, invitadosTodos: bool, creadoPor, creadoEn` | ISO strings compare lexicographically |
-| `eventos/{eid}/equipo/{mid}` | `nombre, registrado, portero, verInvitados` | `mid` = uid or `nr_{pushId}` |
-| `eventos/{eid}/cargos/{cid}` | `nombre, tipo: mesero\|portero\|desmontaje\|libre, orden, titularId?` | |
-| `eventos/{eid}/tareas/{tid}` | `titulo, cargoId, nota?, orden, estado: pendiente\|hecho` | |
-| `membresias/{uid}/{eid}` | `true` | registered members only |
-| `inventario/{itemId}` | `nombre, orden, estado?, notas, eventoId, actualizadoPor, actualizadoEn, archivado?` | |
-| `invitados/{eid}/meta`, `/base64` | see D9 | |
+| `usuarios/{uid}` | `nombre, email, rol, estado: activo\|inactivo, creadoEn, estadoCambiadoPor?, estadoCambiadoEn?` | Solo el admin cambia `rol`/`estado` (auditoría global = Q4) |
+| `catalogo/cargos/{ccid}` | `nombre, tipo: mesero\|libre\|apoyo, orden, manejaInvitados: bool, actualizadoPor, actualizadoEn` (`portero` eliminado en Rev. 5: es un `libre`; `desmontaje` pospuesto) | Toda escritura bajo el cargo (incluidas sus tareas) reescribe `actualizadoPor/En` en el mismo PATCH |
+| `catalogo/cargos/{ccid}/tareas/{ctid}` | `titulo, nota?, orden` | Sin `estado`: el catálogo no se marca |
+| `config/meseroRangos` | `modo: rangos\|libre, rangos: {rid: {desde: int>=1, hasta?: int>=desde, meseros: int>=1}}, actualizadoPor, actualizadoEn` | D19. Sin superposiciones (validado en cliente) |
+| `eventos/{eid}/info` | `nombre, fechaInicio, fechaFin` (`YYYY-MM-DDTHH:mm`; `fechaFin` ya cae al día siguiente si `horaFin <= horaInicio`), `inicioTs, finTs` (number, epoch ms; `finTs > inicioTs`), `personas?: int>=1`, `reabierto?: bool`, `reabiertoPor?/En?`, `archivado?: bool`, `archivadoPor?/En?`, `creadoPor, creadoEn` | Sin `estado` guardado: se deriva del reloj (D21). Sin `cargoDesmontajeId` (pospuesto). `inicioTs/finTs` los calcula `calcularInstantes` al crear/editar. Reemplaza `fecha/horaInicio/horaFin` (los 2 eventos de prueba se borran). `personas` opcional (eventos viejos) |
+| `eventos/{eid}/equipo/{mid}` | `nombre, registrado, cargoInvitadosId?` | `mid` = uid o `nr_{pushId}`. Un miembro inactivado se queda y la UI lo marca. `cargoInvitadosId` (Rev. 5, D24) reemplaza `portero` y `verInvitados` |
+| `eventos/{eid}/cargos/{cid}` | `nombre, tipo: mesero\|libre\|apoyo, orden, manejaInvitados: bool, titularId?, origenCatalogoId?` | **Snapshot** creado al asignar (D22). Cargo sin `titularId` = "sin responsable". `Apoyo`: un doc por persona |
+| `eventos/{eid}/tareas/{tid}` | `titulo, cargoId, nota?, orden, estado: pendiente\|hecho, origenCatalogoId?, auditId?` | Snapshot de la tarea del catálogo (o creada/cubierta en el evento). `auditId` = pushId de la entrada de auditoría del último marcado (acople por reglas) |
+| `eventos/{eid}/ocupacion/{ccid}` | `cid` (string) | Índice de snapshot: un solo cargo del evento por cargo no `apoyo` del catálogo; se escribe una vez, solo se borra al deshacer la asignación (D22) |
+| `eventos/{eid}/actividad` | `true` | Se escribe en todo marcado; no se puede desfijar; define "tiene datos" (D23) |
+| `membresias/{uid}/{eid}` | `true` | solo registrados |
+| `inventario/{itemId}` | **POSPUESTO, fuera del núcleo**: `nombre, orden, estado?, notas, eventoId, actualizadoPor, actualizadoEn, archivado?` | No implementar |
+| `invitados/{eid}/meta` | `nombreArchivo, total, subidoPor, subidoEn` | D9, D24 |
+| `invitados/{eid}/lista/{gid}` | `nombre: string 1..120, nombreNorm, mesa?: string 1..60, orden, asistio: bool, asistioPor?, asistioEn?, auditId?, removido?: bool` | D9, D25–D27. Máx. 500 por evento (cliente) |
 | `auditoria/{eid}/{pushId}` | `accion, actorUid, paraMid?, objetivo, detalle?, ts` | append-only |
 
-## Rules Strategy
+Nodos que desaparecen: `eventos/{eid}/participantes` (slice 4) y `eventos/{eid}/inventario` (legacy, slice 2). `eventos/{eid}/info/estado` ya no se guarda (D21).
 
-**Canonical snippets** (copy them verbatim; `U(x)` = `root.child('usuarios/' + auth.uid + '/x').val()`):
+## Estrategia de reglas
 
-| Name | Expression |
+**Snippets canónicos** (copiarlos tal cual; `U(x)` = `root.child('usuarios/' + auth.uid + '/x').val()`):
+
+| Nombre | Expresión |
 |---|---|
 | `ACTIVO` | `auth != null && U(estado) === 'activo'` |
 | `ADMIN` | `ACTIVO && U(rol) === 'administrador'` |
 | `JEFE_O_ADMIN` | `ACTIVO && (U(rol) === 'administrador' \|\| U(rol) === 'jefe_mesero')` |
 | `MIEMBRO` | `root.child('eventos/' + $eid + '/equipo/' + auth.uid).exists()` |
-| `TITULAR_TAREA` | `root.child('eventos/' + $eid + '/cargos/' + data.parent().child('cargoId').val() + '/titularId').val() === auth.uid` (uses the PRE-state `cargoId`) |
-| `TITULAR_DESM(e)` | `root.child('eventos/' + e + '/cargos/' + root.child('eventos/' + e + '/info/cargoDesmontajeId').val() + '/titularId').val() === auth.uid`, where `e = newData.child('eventoId').val()` |
+| `TITULAR_TAREA` | `root.child('eventos/' + $eid + '/cargos/' + data.parent().child('cargoId').val() + '/titularId').val() === auth.uid` (usa el `cargoId` del PRE-estado) |
+| `INICIO` / `FIN` | `root.child('eventos/' + $eid + '/info/inicioTs').val()` / `.../info/finTs').val()` |
+| `VENTANA_MESERO` | `now >= INICIO && now <= FIN + 7200000` (D21) |
+| `EDITABLE` | `now <= FIN + 14400000 \|\| root.child('eventos/' + $eid + '/info/reabierto').val() === true` (D21) |
+| `CREANDO` | `!root.child('eventos/' + $eid + '/info').exists()` (el evento aún no existe: lo usan la creación de `info` y su entrada `evento.crear`, donde `EDITABLE` fallaría por no haber `finTs`) |
+| `CON_DATOS_PASADO` | `root.child('eventos/' + $eid + '/actividad').exists() && now > FIN` |
+| `CARGO_LISTA` | `root.child('eventos/' + $eid + '/cargos/' + root.child('eventos/' + $eid + '/equipo/' + auth.uid + '/cargoInvitadosId').val())` (Rev. 5; puntero faltante = `cargos/null`, niega) |
+| `TITULAR_LISTA` | `CARGO_LISTA.child('titularId').val() === auth.uid && CARGO_LISTA.child('manejaInvitados').val() === true` (re-verifica el puntero, D24) |
+| `DESDE_LISTA` | `now >= INICIO - 3600000` |
+| `VENTANA_LISTA` | `DESDE_LISTA && now <= FIN + 14400000` (titular de lista; sin reabierto). El jefe usa `DESDE_LISTA && EDITABLE` (D24, D27) |
+| `ROOT_NEW` | `newData` de la raíz post-PATCH alcanzado con `.parent()` encadenado (tantos como niveles tenga la ruta). Permite validar entre rutas del mismo PATCH (V1) |
+| `TITULAR_DESM(e)` | **POSPUESTO (inventario fuera del núcleo).** `root.child('eventos/' + e + '/cargos/' + root.child('eventos/' + e + '/info/cargoDesmontajeId').val() + '/titularId').val() === auth.uid`, con `e = newData.child('eventoId').val()` |
 
-Use string concatenation, not `child(null)`. A missing pointer becomes `.../cargos/null/...`, which is null and fails the comparison, so the rule denies (fails closed).
+Concatenar strings, no `child(null)`. Un puntero faltante queda `.../cargos/null/...`, que es null y falla la comparación: la regla niega (falla cerrada).
 
-**Per node** (root: no `.read`, `.write: false`):
+**Por nodo** (raíz: sin `.read`, `.write: false`):
 
-| Node | `.read` | `.write` | `.validate` (key points) |
-|---|---|---|---|
-| `usuarios` | `JEFE_O_ADMIN` | — | |
-| `usuarios/$uid` | `auth.uid === $uid` (even if inactive) | `(auth.uid===$uid && !data.exists() && rol==='mesero' && estado==='activo') \|\| (ADMIN && auth.uid !== $uid)` | `rol` and `estado` from their enums; `estadoCambiadoPor === auth.uid`; `estadoCambiadoEn === now`; `$other: false` |
-| `eventos` | `JEFE_O_ADMIN` (also enables shallow) | — | |
-| `eventos/$eid` | `ACTIVO && MIEMBRO` | `JEFE_O_ADMIN && !newData.exists()` (delete only) | |
-| `.../info` | — | `JEFE_O_ADMIN` | `fechaFin >= fechaInicio`; `estado` enum; `cargoDesmontajeId`: `newData.parent().parent().child('cargos/' + newData.val() + '/tipo').val() === 'desmontaje'` |
-| `.../equipo/$mid` | — | `JEFE_O_ADMIN` | `registrado ? (!$mid.beginsWith('nr_') && root usuarios/$mid/estado === 'activo') : $mid.beginsWith('nr_')`; bools |
-| `.../cargos/$cid` | — | `JEFE_O_ADMIN` | `tipo` enum; `tipo==='desmontaje'` ⇒ `newData.parent().parent().child('info/cargoDesmontajeId').val() === $cid` (one per event); `titularId` exists in `newData…equipo` |
-| `.../tareas/$tid` | — | `JEFE_O_ADMIN` | `cargoId` exists in post-state `cargos`; `estado` enum |
-| `.../tareas/$tid/estado` | — | `ACTIVO && TITULAR_TAREA` | enum. Only this leaf is granted, so the mesero can change `estado` and nothing else. |
-| `membresias/$uid` | `ACTIVO && auth.uid === $uid` | — | |
-| `membresias/$uid/$eid` | — | `JEFE_O_ADMIN` | `newData.val() === true` (hardening: `newData.parent().parent().parent().child('eventos/'+$eid+'/equipo/'+$uid).exists()`) |
-| `inventario` | `ACTIVO` (not sensitive; jefe/admin supervise) | — | |
-| `inventario/$id` | — | `ACTIVO && newData.exists() && TITULAR_DESM(e) && root…eventos/e/info/estado !== 'finalizado'` | `estado` regex from `ESTADOS_INVENTARIO`; `actualizadoPor === auth.uid`; `actualizadoEn === now` |
-| `invitados/$eid` | `JEFE_O_ADMIN \|\| (ACTIVO && MIEMBRO && (equipo/uid/portero \|\| equipo/uid/verInvitados \|\| info/invitadosTodos))` | `JEFE_O_ADMIN` | `base64`: `isString() && length <= 1400000` (⌈1 MiB/3⌉·4 = 1,398,104); `meta.tamano <= 1048576`; `subidoEn === now` |
-| `auditoria/$eid` | `JEFE_O_ADMIN` | — | |
-| `auditoria/$eid/$aid` | — | `ACTIVO && !data.exists() && newData.exists() && (JEFE_O_ADMIN \|\| MIEMBRO)` | `actorUid === auth.uid`; `ts === now`; `accion.matches(/^[a-z_]+(\.[a-z_]+)+$/)` |
+| Nodo | `.read` | `.write` | `.validate` (puntos clave) | Slice |
+|---|---|---|---|---|
+| `usuarios` | `JEFE_O_ADMIN` | — | | 1 |
+| `usuarios/$uid` | `auth.uid === $uid` (aunque esté inactivo) | `(auth.uid===$uid && !data.exists() && rol==='mesero' && estado==='activo') \|\| (ADMIN && auth.uid !== $uid)` | `rol` y `estado` de sus enums; `estadoCambiadoPor === auth.uid`; `estadoCambiadoEn === now`; `$other: false` | 1 |
+| `catalogo` | `JEFE_O_ADMIN` | `JEFE_O_ADMIN` | | 2 |
+| `catalogo/cargos/$ccid` | — | — | `nombre` string 1..60; `tipo` enum `mesero\|libre\|apoyo` (Rev. 5); `manejaInvitados` bool; `orden` number; `actualizadoPor === auth.uid`; `actualizadoEn === now` | 2 |
+| `catalogo/cargos/$ccid/tareas/$ctid` | — | — | `titulo` string 1..120; `nota` string opcional; `orden` number; `$other: false` | 2 |
+| `config` | `JEFE_O_ADMIN` | — | | 2B |
+| `config/meseroRangos` | — | `ADMIN` | `modo` enum `rangos\|libre`; `actualizadoPor === auth.uid`; `actualizadoEn === now`; `$other: false` | 2B |
+| `config/meseroRangos/rangos/$rid` | — | — | `desde` número entero `>= 1` (`newData.val() % 1 === 0`); `meseros` entero `>= 1`; `hasta` ausente o entero `>= desde`; `$other: false`. Superposiciones: solo cliente | 2B |
+| `eventos` | slice 1: `ACTIVO` (legacy). Slice 3: `JEFE_O_ADMIN` (habilita shallow) | — | | 1 / 3 |
+| `eventos/$eid` | slice 3: `ACTIVO && MIEMBRO` | S1: `ADMIN && !newData.exists()`. S3B: `ADMIN && !newData.exists() && (!data.child('actividad').exists() \|\| now <= data.child('info/finTs').val())` (solo borrar; pasado con datos = se archiva, D23; falla cerrada si falta `finTs`) | | 1 / 3B |
+| `.../info` | — | slice 1: `JEFE_O_ADMIN && newData.exists()` (el jefe no la borra; edición ya presente en el archivo local, sin desplegar). **Slice 3B: se concede por hojas** (nunca en `info`), ver las dos filas siguientes | slice 3: `finTs > inicioTs` (numbers); `personas` ausente o entero `>= 1` | 1 / 3 / 3B |
+| `.../info/{nombre,fechaInicio,fechaFin,inicioTs,finTs,creadoPor,creadoEn}` | — | `JEFE_O_ADMIN && newData.exists() && (CREANDO \|\| EDITABLE)`; además en `fechaInicio,fechaFin,inicioTs,finTs`: `&& !CON_DATOS_PASADO` (fechas congeladas; V11) | tipos; `creadoPor === auth.uid` y `creadoEn === now` solo si `CREANDO`; `$other: false` en `info` | 3B |
+| `.../info/personas` | — | `JEFE_O_ADMIN && (CREANDO \|\| EDITABLE)` (opcional: se puede borrar) | entero `>= 1` | 3B |
+| `.../info/{reabierto,reabiertoPor,reabiertoEn,archivado,archivadoPor,archivadoEn}` | — | `ADMIN` (sin exigir `EDITABLE`, para poder reabrir un finalizado) | `reabierto`/`archivado` bool; `reabiertoPor/archivadoPor === auth.uid`; `...En === now` | 3B |
+| `.../participantes/$uid` (legacy) | — | regla actual + `ACTIVO` | | 1 → se borra en 4 |
+| `.../tareas/$tareaId` (legacy) | — | regla actual + `ACTIVO` | | 1 → se reemplaza en 4 |
+| `.../inventario` (legacy) | — | se borra la regla | | 2 |
+| `.../equipo/$mid` | — | `JEFE_O_ADMIN && EDITABLE` (S3 sin `EDITABLE`; se agrega en 3B) | `registrado ? (!$mid.beginsWith('nr_') && root usuarios/$mid/estado === 'activo' && root usuarios/$mid/rol !== 'administrador') : $mid.beginsWith('nr_')`; `registrado` bool; `$other: false` | 3 |
+| `.../equipo/$mid/cargoInvitadosId` (Rev. 5) | — | (hereda `JEFE_O_ADMIN && EDITABLE`) | string; `ROOT_NEW.child('eventos/'+$eid+'/cargos/'+newData.val()+'/manejaInvitados').val() === true && ROOT_NEW…cargos/{valor}/titularId === $mid` | 4 |
+| `.../cargos/$cid` | — | `JEFE_O_ADMIN && EDITABLE` | `tipo` enum `mesero\|libre\|apoyo` (sin `portero`, Rev. 5; sin `desmontaje`, pospuesto); `manejaInvitados` bool; `titularId` ausente o existente en `newData…equipo`; `origenCatalogoId` string obligatorio (sin chequeo de existencia en el catálogo); si `tipo !== 'apoyo'`: `ROOT_NEW.child('eventos/'+$eid+'/ocupacion/'+origenCatalogoId).val() === $cid` (no hay snapshot sin su índice) | 4 |
+| `.../ocupacion/$ccid` | — | `JEFE_O_ADMIN && EDITABLE && (!data.exists() \|\| (!newData.exists() && !ROOT_NEW.child('eventos/'+$eid+'/cargos/'+data.val()).exists()))` (se escribe una vez; solo se borra junto con su cargo) | string; `ROOT_NEW…cargos/{valor}/origenCatalogoId === $ccid` | 4 |
+| `.../actividad` | — | `ACTIVO && newData.val() === true && ((JEFE_O_ADMIN && EDITABLE) \|\| (MIEMBRO && VENTANA_MESERO))` (la condición va en `.write` porque `.validate` no corre en borrados: así nadie la desfija) | | 4 |
+| `.../tareas/$tid` | — | `JEFE_O_ADMIN && EDITABLE` | `cargoId` existe en `cargos` del post-estado; `estado` enum; `origenCatalogoId` string opcional | 4 |
+| `.../tareas/$tid/estado` | — | `ACTIVO && newData.exists() && ((TITULAR_TAREA && VENTANA_MESERO && newData.parent().child('auditId').val() !== data.parent().child('auditId').val()) \|\| (JEFE_O_ADMIN && EDITABLE))` | enum. Al mesero solo se le otorgan las hojas `estado` y `auditId`: no puede tocar `titulo`, `cargoId` ni `nota` (no hay `.write` para él en esas rutas), y solo entre el inicio y fin + 2 h (D21). `newData.exists()` en `.write` impide que borre la hoja | 4 |
+| `.../tareas/$tid/auditId` | — | `ACTIVO && newData.exists() && ((TITULAR_TAREA && VENTANA_MESERO) \|\| (JEFE_O_ADMIN && EDITABLE))` | `!root.child('auditoria/'+$eid+'/'+newData.val()).exists()` (entrada nueva) `&& ROOT_NEW.child('auditoria/'+$eid+'/'+newData.val()+'/objetivo').val() === $tid` y `accion === 'tarea.marcar'` (acople marcado ↔ auditoría, V15) | 4 |
+| `membresias/$uid` | `ACTIVO && auth.uid === $uid` | — | | 3 |
+| `membresias/$uid/$eid` | — | `JEFE_O_ADMIN && (EDITABLE \|\| newData.val() === null)` | `newData.val() === true` (endurecimiento: `newData.parent().parent().parent().child('eventos/'+$eid+'/equipo/'+$uid).exists()`) | 3 |
+| `inventario`, `inventario/$id` (**POSPUESTO, no implementar**: filas conservadas) | `ACTIVO` (Q6) | — | | pospuesto |
+| `inventario/$id` (pospuesto) | — | `ACTIVO && newData.exists() && TITULAR_DESM(e) && root…eventos/e/info/estado !== 'finalizado'` (+ `\|\| JEFE_O_ADMIN` si Q2 = sí y el titular es `nr_`) | `estado` con el regex de `ESTADOS_INVENTARIO`; `actualizadoPor === auth.uid`; `actualizadoEn === now` | 5 |
+| `invitados/$eid` | — (sin `.read`: la cascada abriría `lista`, D24) | `ADMIN` (sube, re-sube, borra, marca; en cualquier momento; la cascada de D17 escribe `null` desde el slice 3) | | 5 |
+| `invitados/$eid/meta` | `ACTIVO && (JEFE_O_ADMIN \|\| TITULAR_LISTA)`, sin ventana | — | `nombreArchivo` string 1..200; `total` entero 0..500; `subidoPor === auth.uid`; `subidoEn === now`; `$other: false` | 5 |
+| `invitados/$eid/lista` | `ACTIVO && (ADMIN \|\| (JEFE_O_ADMIN && DESDE_LISTA && EDITABLE) \|\| (TITULAR_LISTA && VENTANA_LISTA))` (D24) | — | | 5 |
+| `invitados/$eid/lista/$gid` | — | — | `nombre` string 1..120; `nombreNorm` string 1..120; `mesa` ausente o string 1..60; `orden` number; `asistio` bool (obligatorio); `removido` ausente o bool; `$other: false` (así un no-admin no puede crear un registro: le faltarían hojas que no puede escribir) | 5 |
+| `invitados/$eid/lista/$gid/{asistio,asistioPor,asistioEn}` | — | `ACTIVO && newData.exists() && data.parent().exists() && ((JEFE_O_ADMIN && DESDE_LISTA && EDITABLE) \|\| (TITULAR_LISTA && VENTANA_LISTA && newData.parent().child('auditId').val() !== data.parent().child('auditId').val()))` (en `asistio`; las otras dos sin la comparación de `auditId`) | `asistio` bool; `asistioPor === auth.uid`; `asistioEn === now` | 5 |
+| `invitados/$eid/lista/$gid/auditId` | — | igual que `asistioPor` | `!root.child('auditoria/'+$eid+'/'+newData.val()).exists() && ROOT_NEW…auditoria/$eid/{valor}/objetivo === $gid && …/accion === 'invitado.asistencia'` (acople, V18) | 5 |
+| `auditoria/$eid` | `JEFE_O_ADMIN` | — | | 3 |
+| `auditoria/$eid/$aid` | — | `ACTIVO && !data.exists() && newData.exists() && (ADMIN \|\| (JEFE_O_ADMIN && (EDITABLE \|\| CREANDO)) \|\| (MIEMBRO && VENTANA_MESERO && newData.child('accion').val() === 'tarea.marcar') \|\| (TITULAR_LISTA && VENTANA_LISTA && newData.child('accion').val() === 'invitado.asistencia'))` (tras finalizar solo el admin agrega, p. ej. `evento.reactivar`; el mesero solo agrega su marcado; el titular de lista solo su marca de asistencia, Rev. 5) | `actorUid === auth.uid`; `ts === now`; `accion.matches(/^[a-z_]+(\.[a-z_]+)+$/)`; si `accion === 'tarea.marcar'` y el actor no es jefe/admin: `ROOT_NEW…eventos/$eid/tareas/{objetivo}/auditId === $aid` (no hay entrada de marcado sin marcado); si `accion === 'invitado.asistencia'` y el actor no es jefe/admin: `ROOT_NEW…invitados/$eid/lista/{objetivo}/auditId === $aid`; `$other: false` | 3 (acoples en 4 y 5) |
 
-**Note on cascade:** `.read` and `.write` cascade down and can never be revoked further down. That is why there is no root `.read`, and why admin/jefe write access is granted per subnode, never at `eventos/$eid` (except for deletes).
+**Nota sobre la cascada:** `.read` y `.write` bajan en cascada y no se pueden revocar más abajo. Por eso no hay `.read` en la raíz, y por eso la escritura de admin/jefe se otorga por subnodo, nunca en `eventos/$eid` (salvo el borrado del admin). `catalogo` sí otorga en su raíz porque no hay ningún permiso más fino adentro.
 
-**Access matrix** (R = read, W = write, — = denied):
+**Matriz de acceso** (R = lee, W = escribe, — = negado):
 
-| Resource | Admin | Jefe | Member titular | Member, not titular | Non-member | Inactive / anon |
+| Recurso | Admin | Jefe | Miembro titular | Miembro no titular | No miembro | Inactivo / anónimo |
 |---|---|---|---|---|---|---|
-| Event list | R all | R all | R own (membresias) | R own | — | — |
-| `eventos/E` | RW | RW | R; W `estado` of own tasks | R | — | — |
-| Inventory | R | R | RW if Desmontaje titular | R | R | — |
-| Invitados | RW | RW | R if flag/portero/all | R if flag | — | — |
-| Audit | R + append | R + append | append | append | — | — |
+| Usuarios (lista) | R; W rol/estado | R | propio | propio | propio | propio (solo R) |
+| Catálogo | RW | RW | — | — | — | — |
+| Configuración de meseros | RW | R | — | — | — | — |
+| Lista de eventos | R todos | R todos | R propios (membresias) | R propios | — | — |
+| `eventos/E` | RW + borrar (no pasado con datos) + reactivar + archivar | RW mientras `EDITABLE` (sin borrar, sin reactivar, sin archivar) | R; W `estado` + `auditId` de sus tareas (y `actividad`) solo en `VENTANA_MESERO` | R | — | — |
+| Inventario (pospuesto) | — | — | — | — | — | — |
+| Lista de invitados (Rev. 5) | R + marca siempre; sube, re-sube, borra | R + marca asistencia desde inicio − 1 h mientras `EDITABLE`; no sube | R + marca si su cargo tiene `manejaInvitados`, desde inicio − 1 h hasta fin + 4 h | — | — | — |
+| Auditoría | R + append (siempre) | R + append mientras `EDITABLE` | append solo `tarea.marcar` acoplado a su marcado, en `VENTANA_MESERO`; titular de lista: `invitado.asistencia` acoplada, en `VENTANA_LISTA` | — | — | — |
 
-**UNVERIFIED (must be checked before deploying slices 1 and 2):**
+(En la matriz, "Miembro titular" de la fila de invitados = titular de un cargo con `manejaInvitados`.)
 
-| # | Behavior | Expected |
+**SIN VERIFICAR (chequear en el emulador antes de desplegar los slices 1, 2, 2B, 3, 3B, 4 y 5; si V1 falla, el acople de D22/V15 y la validación cruzada de `ocupacion` se caen y hay que rediseñarlos):**
+
+| # | Comportamiento | Esperado |
 |---|---|---|
-| V1 | Multi-path PATCH `/.json`: `.write` and `.validate` are evaluated per leaf, and `newData` reflects the full merged update (cross-path validates) | yes |
-| V2 | A missing pointer (`cargos/null/titularId`) denies the write; it neither errors open nor allows | deny |
-| V3 | `{".sv":"timestamp"}` nested inside a root PATCH via REST satisfies `ts === now` | pass |
-| V4 | Ancestor `.validate` (`tareas/$tid`) runs on a leaf write to `estado` without breaking it | pass |
-| V5 | `?shallow=true` on `eventos` needs `.read` at `eventos` (and gets it) | 200 for jefe, 403 for mesero |
-| V6 | A PATCH whose paths overlap (one is an ancestor of another) is rejected | 400. `PatchBuilder` throws first |
-| V7 | `.validate` on strings around 1.4M characters behaves correctly | 1,398,104 passes; 1,400,001 fails |
+| V1 | PATCH multi-path `/.json`: `.write` y `.validate` se evalúan por hoja, y `newData` refleja el update completo (validaciones cruzadas entre paths) | sí |
+| V2 | Un puntero faltante (`cargos/null/titularId`) niega la escritura; no da error ni abre | niega |
+| V3 | `{".sv":"timestamp"}` anidado en un PATCH a la raíz por REST cumple `ts === now` | pasa |
+| V4 | El `.validate` de un ancestro (`tareas/$tid`) corre en una escritura de hoja (`estado`) sin romperla | pasa |
+| V5 | `?shallow=true` sobre `eventos` necesita `.read` en `eventos` (y lo obtiene) | 200 jefe, 403 mesero |
+| V6 | Un PATCH con paths superpuestos (uno ancestro de otro) se rechaza | 400. `PatchBuilder` lanza antes |
+| V7 | **[Redefinida en Rev. 5; la anterior (strings de ~1,4M) ya no aplica: no hay base64]** Un PATCH del admin con 500 registros de `lista` + `meta` + auditoría (~4.000 hojas) se valida y aplica entero; con un registro inválido (`$other`, `nombre` de 121) se rechaza entero | 200 / 400 o 403 |
+| V8 | Escribir una tarea anidada del catálogo junto con `actualizadoPor/En` del cargo en el mismo PATCH pasa el `.validate` del cargo (con `actualizadoEn === now`); sin ellos, falla | pasa / 403 |
+| V9 | `eventos/E: null` del admin en un PATCH con `membresias/*/E: null`, `invitados/E: null` y una entrada de auditoría se aplica entero; el mismo PATCH del jefe se rechaza entero | 200 / 403 |
+| V10 | `newData.val() % 1 === 0` acepta enteros y rechaza `2.5` en `config/.../desde` | 200 / 400 o 403 |
+| V11 | `EDITABLE` leyendo `info/finTs` por hoja: en la creación del evento (aún sin `finTs` en `data`) el PATCH de las hojas de `info` pasa; finalizado (`now > finTs + 4 h`, sin `reabierto`) las rechaza | 200 / 403 |
+| V12 | Borrado condicional: `eventos/E: null` del admin falla si `now > finTs` y existe `actividad`; pasa con evento futuro o sin `actividad` | 403 / 200 |
+| V13 | **[Redefinida en Rev. 5]** Ventana de `invitados/{eid}/lista` (lectura y marca): jefe y titular de lista a inicio − 61 min 403, a inicio − 60 min 200; tras fin + 4 h 403 (admin 200); reabierto: jefe 200, titular 403 | 403 / 200 / 403 |
+| V14 | `ocupacion/{ccid}`: segundo snapshot del mismo cargo (escribir sobre un valor existente) se rechaza entero; cambiar `titularId` del snapshot existente pasa; borrar `ocupacion` sin borrar su cargo se rechaza | 403 / 200 / 403 |
+| V15 | Acople marcado ↔ auditoría: un mesero que cambia `estado` sin un `auditId` nuevo, o con un `auditId` que no apunta a una entrada nueva `tarea.marcar` del mismo PATCH, recibe 403; una entrada `tarea.marcar` del mesero sin el cambio de `auditId` de la tarea recibe 403 | 403 / 403 |
+| V16 | Aritmética con `null`: `now <= null + 14400000` (evento sin `finTs`) evalúa a falso/error y niega; nunca concede | niega |
+| V17 | `.validate` no corre en borrados: un mesero no puede borrar `estado` ni nadie `actividad` (las condiciones están en `.write`) | 403 |
+| V18 | (Rev. 5) Acople marca de asistencia ↔ auditoría: un titular de lista que cambia `asistio` sin `auditId` nuevo, o con uno que no apunta a una entrada nueva `invitado.asistencia` con `objetivo = gid`, recibe 403; una entrada `invitado.asistencia` suya sin la marca, 403; el jefe y el titular no pueden escribir `nombre`, `mesa`, `orden`, `removido` ni crear/borrar registros | 403 |
+| V19 | (Rev. 5) Puntero `cargoInvitadosId`: con el cargo apuntado sin `manejaInvitados`, con otro titular o inexistente (`cargos/null`), `TITULAR_LISTA` niega la lectura de `lista` y `meta`; escribir un puntero así se rechaza | 403 |
+| V20 | (Rev. 5) Re-subida: un PATCH del admin que mezcla hojas sueltas de registros existentes (`lista/G/nombre`, `mesa`, `orden`, `removido: null`), registros completos nuevos y `lista/G2: null` se aplica entero y no toca las hojas de asistencia de los emparejados | 200 |
 
-**How to verify:** add `"emulators": {"database":{"port":9000},"auth":{"port":9099}}` to `firebase.json`, then run `firebase emulators:start`. Create admin, jefe, mesero A (member), mesero B (non-member) and an inactive user in the Auth emulator, take their idTokens from the emulator's `signInWithPassword`, seed the data with `?auth=owner`, and run the manual REST checklist (curl/PowerShell `Invoke-RestMethod`): one row per matrix cell and per V1–V7, each with its expected status code. Record the results in `openspec/changes/core-eventos/rules-checklist.md` (the apply phase writes it). `@firebase/rules-unit-testing` was rejected for now: it needs a second Node runner outside Karma.
+**Cómo verificar:** agregar `"emulators": {"database":{"port":9000},"auth":{"port":9099}}` a `firebase.json` y correr `firebase emulators:start`. Crear en el emulador de Auth un admin, un jefe, un mesero A (miembro), un mesero B (no miembro) y un inactivo; sacar sus idTokens con `signInWithPassword` del emulador; sembrar datos con `?auth=owner`; correr el checklist REST manual (curl / `Invoke-RestMethod`): una fila por celda de la matriz y por V1–V20, cada una con el status esperado. Los resultados van en `openspec/changes/core-eventos/rules-checklist.md` (lo escribe la fase apply). `@firebase/rules-unit-testing` se descarta por ahora: necesita un segundo runner de Node fuera de Karma.
 
-## Service Layer
+## Capa de servicios
 
-Pure modules (new, `src/app/core/logica/`):
+Módulos puros (nuevos, `src/app/core/logica/`):
 
 ```ts
-// patch-builder.ts
+// patch-builder.ts                                    (slice 2; audit() en slice 3)
 export type Updates = Record<string, unknown>;
 export class PatchBuilder {
-  constructor(private eid: string, private idGen: () => string) {}
-  set(path: string, value: unknown): this;   // throws on ancestor/descendant overlap (V6)
-  remove(path: string): this;                // value null
-  audit(e: NuevaEntradaAuditoria): this;     // adds auditoria/{eid}/{idGen()}
+  constructor(private idGen: () => string) {}
+  set(path: string, value: unknown): this;   // lanza si hay superposición ancestro/descendiente (V6)
+  remove(path: string): this;                // valor null
+  audit(eid: string, e: NuevaEntradaAuditoria): this;   // agrega auditoria/{eid}/{idGen()}
   build(): Updates;
 }
-// auditoria.ts
-export function crearEntradaAuditoria(e: NuevaEntradaAuditoria): EntradaAuditoriaPayload; // ts: {'.sv':'timestamp'}, strips undefined
-export function agruparPorPersona(entradas: EntradaAuditoria[], equipo: MiembroEquipo[]): ResumenPersona[];
-// push-id.ts       generarPushId(now = Date.now, rand = Math.random): string
-// numeracion.ts    siguienteNombreMesero(cargos): string; siguienteOrden(items): number   // max+1, no renumbering
-// permisos.ts      esJefeOAdmin(rol); puedeMarcar(sesion, cargo); esTitularDesmontaje(uid, evento);
-//                  puedeVerInvitados(uid, rol, evento); flagsPortero(cargos, equipo): Record<mid, boolean>
-// base64.ts        base64DesdeDataUrl(s); bytesDesdeBase64(b64): Uint8Array; tamanoMaximoOk(bytes)
+// push-id.ts       generarPushId(now = Date.now, rand = Math.random): string           (slice 2)
+// numeracion.ts    siguienteNombreMesero(cargos: {nombre,tipo}[]): string;              (slice 2)
+//                  siguienteOrden(items): number   // max+1, sin renumerar; sirve para catálogo y evento
+// catalogo.ts      ordenarCatalogo(raw): CargoCatalogo[]; esMultiTitular(tipo): boolean (solo 'apoyo')  (slice 2)
+//                  (puedeAgregarDesmontaje: POSPUESTO)
+// ciclo-evento.ts  calcularInstantes(fecha, horaInicio, horaFin): {fechaInicio, fechaFin, inicioTs, finTs}  (slice 3)
+//                    // si horaFin <= horaInicio, fin = día siguiente (22:00 -> 03:00)
+//                  estadoEvento(info, ahora): 'programado'|'en_curso'|'marcado_cerrado'|'finalizado'|'reabierto'
+//                  puedeMarcarMesero(info, ahora); puedeEditar(info, ahora)   // fin+2h / fin+4h o reabierto (D21)
+//                  puedeBorrar(info, tieneActividad, ahora); puedeArchivar(info, tieneActividad, ahora)  (slice 3B)
+// cruce-horarios.ts hayCruce(a, b); eventosEnConflicto(info, otros)   // fin == inicio no cruza (slice 3)
+// auditoria.ts     crearEntradaAuditoria(e): EntradaAuditoriaPayload  // ts {'.sv':'timestamp'}, quita undefined (slice 3)
+//                  agruparPorPersona(entradas, equipo): ResumenPersona[]                 (slice 6)
+// config-meseros.ts                                                                      (slice 2B)
+export function validarRangos(rangos: RangoMeseros[]): ErrorRango[];  // vacío = válido: enteros >= 1, desde <= hasta,
+//                  sin superposición (ordenados por desde), a lo sumo un abierto y debe ser el de mayor desde
+export function sugerirMeseros(config: ConfigMeseros | null, personas: number | null | undefined): number | null; // D20
+// asignacion-cargos.ts                                                                   (slice 4; reemplaza copia-catalogo.ts, D22)
+export function construirAsignacion(
+  pb: PatchBuilder, eid: string, plantilla: CargoCatalogo, mid: string,
+  cargosDelEvento: Cargo[], ocupacion: Record<string, string>, idGen: () => string
+): ResumenAsignacion;   // lanza CargoOcupadoError si tipo != 'apoyo' y el snapshot de ccid ya tiene titular
+//   si tipo != 'apoyo' y ocupacion[ccid] existe (snapshot sin titular): solo set cargos/{cid}/titularId = mid (reutiliza)
+//   si no: set eventos/E/cargos/{nuevoCid} = {nombre, tipo, orden, titularId: mid, origenCatalogoId: ccid}
+//     por cada tarea de la plantilla: set eventos/E/tareas/{nuevoTid} = {titulo, nota?, orden, cargoId: nuevoCid, estado:'pendiente', origenCatalogoId: ctid}
+//     y, si tipo != 'apoyo': set eventos/E/ocupacion/{ccid} = nuevoCid
+//   copia manejaInvitados; si es true: set eventos/E/equipo/{mid}/cargoInvitadosId = cid (punteroLista)
+//   sin referencias compartidas con la plantilla; devuelve {cargoId, tareas: m}
+//   el servicio agrega pb.audit(eid, {accion:'cargo.titular', paraMid: mid, detalle: resumen})
+// cargos-sin-responsable.ts                                                              (slice 4, D22, Q10 resuelta)
+//   tareasSinResponsable(catalogo, cargos, tareas, equipo, usuarios, editable): TareaSinResponsable[]
+//     // (a) persistidas: snapshot sin titular, titular fuera del equipo o inactivo
+//     // (b) derivadas (solo si editable): tareas de cargos del catálogo no 'apoyo' sin snapshot en el evento
+//     //     cuyo ctid no fue cubierto; llevan {origen: 'catalogo', ccid, ctid} y no existen en la DB
+// permisos.ts      esJefeOAdmin(rol); etiquetaRol(rol) ('mesero' -> 'Trabajador'); puedeMarcar(sesion, cargo, info, ahora)   // D21
+//                  punteroLista(cargos, mid): string | null   // cid de un cargo con manejaInvitados cuyo titular es mid (Rev. 5, D24)
+//                  seccionesVisibles(sesion, detalle): SeccionEvento[]                   (slice 3/4; Invitados según D24)
+// ventanas-invitados.ts (slice 5, D24/D27)
+//                  puedeVerLista(sesion, cargos, miembro, info, ahora); puedeMarcarAsistencia(...)
+//                    // admin siempre; jefe desde inicio-1h mientras editable; titular de lista desde inicio-1h hasta fin+4h
+// normalizar.ts    normalizarNombre(s); claveNombre(s) (sin tildes, minúsculas); normalizarMesa(s); esTituloMesa(s)  (slice 5)
+// parser-invitados.ts parsearListaInvitados(filas: unknown[][], hojasExtra?: string[]): ResultadoParseo  (slice 5, D25)
+// fusion-invitados.ts fusionarLista(actuales, nuevos, idGen): {updates, resumen: ResumenFusion}         (slice 5, D26)
+// lista-invitados.ts  agruparPorMesa(lista); contadores(lista) (global y por mesa, sin removidos);
+//                  filtrarPorNombre(lista, q)                                             (slice 5)
+// lector-xlsx.ts   leerPrimeraHoja(file): Promise<{filas, hojasExtra}>   // adaptador de read-excel-file, import() dinámico,
+//                  // valida .xlsx y <= 1 MiB, cualquier error -> ArchivoInvalidoError     (slice 5, D10)
 ```
 
-| Service | Status | Methods (all mutations: `Observable<void>` = one `patchRaiz`) |
-|---|---|---|
-| `RtdbService` | Modify | +`patchRaiz(u: Updates)`, +`getShallow(path)`; −`push`, −`getByChild` (slice 1); −`put`/`remove` if unused (slice 6) |
-| `AuthService` | Modify | Inactive check in `cargarPerfilYGuardar`/`refrescarSesion` (+`signOut`); −`mensajeError` (dead) |
-| `UserService` | Modify | `listarUsuarios()`, `listarElegibles()` (active only), `asignarRol`, `cambiarEstado(uid, estado, adminUid)`; −`listarActivosPorRol` |
-| `EventService` | Rewrite | `listarTodos()` (D4), `listarMios(uid)` (D5), `obtenerInfo(eid)`, `obtenerDetalle(eid)` (single GET of `eventos/E`), `crear`, `editar`, `borrar(evento, equipo)` (+ nulls `membresias/*/E` and `invitados/E`), `finalizar(evento, items?)` (slice 6 adds the snapshot), `reactivar` |
-| `EquipoService` | New | `agregarRegistrado(eid, usuario)`, `agregarNoRegistrado(eid, nombre)`, `quitar(eid, miembro, cargos)` (nulls equipo, membresia, titularIds and recomputes portero), `cambiarVerInvitados` |
-| `CargoService` | New | `crearMesero(eid, cargos)`, `crearPortero`, `crearLibre(nombre)`, `crearDesmontaje` (+pointer), `renombrar`, `asignarTitular(eid, cargo, mid\|null, detalle)` (+portero flags), `eliminar(eid, cargo, tareas, destino: cargoId\|null)` (moves or deletes tasks, nulls the pointer if desmontaje) |
-| `TaskService` | Rewrite (slice 3) | `crear(eid, cargoId, titulo, nota?)`, `editar`, `mover`, `eliminar`, `marcar(eid, tarea, estado, cargo, actorUid)` (sets `paraMid` = titularId when actor ≠ titular) |
-| `InventoryService` | Rewrite (slice 4) | `listar()`, `agregar(eid, datos)`, `editar(eid, item, cambios)`, `archivar(eid, item)`, `snapshot(items)` |
-| `InvitadosService` | New (slice 5) | `obtenerMeta(eid)`, `descargar(eid)`, `subir(eid, file: File)`, `borrar(eid)`, `cambiarTodos(eid, bool)` |
-| `AuditService` | New (slice 2) | `listar(eid)` sorted by key (pushId); the entries themselves are built by `PatchBuilder.audit` |
+| Servicio | Estado | Métodos (toda mutación: `Observable<void>` = un `patchRaiz`) | Slice |
+|---|---|---|---|
+| `RtdbService` | Modificar | +`patchRaiz(u: Updates)`, +`getShallow(path)`; −`getByChild`; −`put`/`remove` si quedan sin uso (slice 6) | 1, 6 |
+| `AuthService` | Modificar | Chequeo de inactivo en `cargarPerfilYGuardar`/`refrescarSesion` (+`signOut`); −`mensajeError` (muerto) | 1 |
+| `UserService` | Modificar | `listarEquipo()` (existe), `listarElegibles()` (solo activos), `asignarRol` (existe), `cambiarEstado(uid, estado, adminUid)`; −`listarActivosPorRol` (sin uso) | 1 |
+| `CatalogoService` | Nuevo | `listar()`, `crearCargo(tipo, nombre?, cargos)` (autonumera Mesero; tipos `mesero|libre|apoyo`), `editarCargo(ccid, cambios)` (incluye `manejaInvitados`), `eliminarCargo(ccid)` (borra sus tareas en el mismo path), `crearTarea(ccid, titulo, nota?)`, `editarTarea`, `eliminarTarea`. Cada uno reescribe `actualizadoPor/En` del cargo. Sin auditoría por evento (Q4). | 2 |
+| `ConfigMeserosService` | Nuevo | `obtener()` (`GET config/meseroRangos`, `null` si no existe), `guardar(config, adminUid)` (corre `validarRangos`, lanza si hay errores, un `patchRaiz` con el nodo completo + `actualizadoPor/En`) | 2B |
+| `EventService` | Reescribir | `listarTodos()` (D4), `listarMios(uid)` (D5), `obtenerInfo(eid)`, `obtenerDetalle(eid)` (un GET de `eventos/E`), `crear` (calcula instantes), `editar` (hojas, D12; recalcula instantes y rechaza cruces), `borrar(evento, equipo)` (D17, solo admin; rechaza pasado con datos), `reactivar` (solo admin, `reabierto*`), `finalizar` (solo cierra un reabierto, Q14), `archivar`/`desarchivar` (solo admin, D23) | 1 (`eliminar` → un PATCH), 3, 3B |
+| `EquipoService` | Nuevo | `agregarRegistrado(eid, usuario)`, `agregarNoRegistrado(eid, nombre)`, `quitar(eid, miembro, cargos)` (slice 3: anula equipo y membresía; slice 4 suma: borra los `titularId` del miembro, que dejan sus snapshots "sin responsable"; `ocupacion` se conserva porque el snapshot sigue). `cambiarVerInvitados` se elimina (Rev. 5) | 3, 4 |
+| `AuditService` | Nuevo | `listar(eid)` ordenado por clave (pushId); las entradas las arma `PatchBuilder.audit` | 3 |
+| `CargoService` | Nuevo | `asignar(eid, plantilla, mid)` (snapshot de cargo + tareas con `manejaInvitados`, `ocupacion = cid`, puntero `cargoInvitadosId`; reutiliza el snapshot sin titular si existe; D22), `cambiarTitular(eid, cargo, mid)` (actualiza `titularId` del mismo snapshot + punteros de ambos miembros), `quitarTitular(eid, cargo)` (borra `titularId` y recalcula el puntero; el snapshot queda "sin responsable"), `editar(eid, cargo, {nombre?, manejaInvitados?})` (solo en el evento; recalcula el puntero del titular), `eliminar(eid, cargo, tareas)` = deshacer asignación (borra cargo, tareas y `ocupacion`; el cliente lo impide si hay tareas `hecho`). **No existe** crear un cargo solo para el evento (decisión del usuario). Nunca toca `catalogo`. | 4 |
+| `TaskService` | Reescribir | `crear(eid, cargoId, titulo, nota?)`, `editar`, `mover(eid, tarea, cargoDestino)` (reasigna una tarea persistida "sin responsable"), `cubrir(eid, tareaCatalogo, ccid, cargoDestino)` (copia una tarea derivada del catálogo como tarea nueva del cargo destino, con `origenCatalogoId = ctid`), `eliminar`, `marcar(eid, tarea, estado, cargo, actorUid)` (un PATCH: `estado`, `auditId = aid`, `actividad = true` siempre (idempotente) y `auditoria/E/aid` con `tarea.marcar`, `objetivo = tid`, `paraMid` = titularId cuando actor ≠ titular) | 4 |
+| ~~`InventoryService`~~ | **POSPUESTO** (no se re-crea en el núcleo) | `listar()`, `agregar(eid, datos)`, `editar(eid, item, cambios)`, `archivar(eid, item)`, `snapshot(items)` | pospuesto |
+| `InvitadosService` | Nuevo (Rev. 5) | `obtenerMeta(eid)`, `listar(eid)`, `previsualizar(file, actuales?)` (lee con `lector-xlsx`, parsea y, si hay lista, calcula la fusión; no escribe), `subir(eid, resultado, nombreArchivo)` (primera vez: `meta` + registros + `invitados.subir`), `reemplazar(eid, resultado, nombreArchivo)` (relee `lista`, `fusionarLista`, `invitados.reemplazar`), `marcar(eid, invitado, asistio)` (D27), `borrar(eid)` (`invitados.borrar`); opcional `exportar(lista)` (`write-excel-file`). Solo en navegador. | 5 |
 
-Example flow (assigning a titular):
+**Acciones de auditoría** (`accion`): `evento.crear|editar|finalizar|reactivar|archivar|desarchivar|borrar`, `equipo.agregar|quitar`, `cargo.titular|quitar_titular|editar|eliminar`, `tarea.crear|editar|mover|cubrir|eliminar|marcar`, `invitados.subir|reemplazar|borrar`, `invitado.asistencia`. (Rev. 5 elimina `equipo.ver_invitados` e `invitados.todos`.) (`cargos.copiar_catalogo`, `cargo.crear` y `cargo.activar` se eliminan; `inventario.*` pospuesto.)
+
+Flujo de ejemplo (asignar un cargo a una persona):
 
 ```
-CargoService.asignarTitular
-  -> PatchBuilder(eid).set(cargos/C/titularId, mid)
-       .set(equipo/X/portero, ...)            // from flagsPortero diff
-       .audit({accion:'cargo.titular', ...})
-  -> rtdb.patchRaiz(build())
+CargoService.asignar
+  -> pb = new PatchBuilder(idGen)
+  -> construirAsignacion(pb, eid, plantilla, mid, cargosDelEvento, ocupacion, idGen)   // lanza CargoOcupadoError si ya está tomado
+  -> pb.audit(eid, {accion:'cargo.titular', objetivo: cid, paraMid: mid, actorUid})
+  -> rtdb.patchRaiz(pb.build())
 ```
 
-## UI per Slice (mobile-first: cards and accordions, no columns)
+## UI por slice (mobile-first: cards y acordeones, sin columnas)
 
-| Slice | Routes / pages | Nav |
+| Slice | Rutas / páginas | Menú |
 |---|---|---|
-| 1 | `/app/admin/usuarios` (rename; role and active/inactive toggle; inactive users in a separate section). Login shows the inactive message. `authGuard` checks `estado`. `rolGuard` redirect goes to `/app/eventos`. | Admin: Eventos, Usuarios |
-| 2 | `/app/eventos` (role-aware list). `/app/eventos/:eid` container `EventoDetalleComponent` with tabs; the **Equipo** tab (`EquipoEventoComponent`) has a selector of eligible users plus "Agregar sin cuenta" (name only). Non-registered members get a "Sin cuenta" badge. Create/edit/delete/finalize in a modal. Delete Tareas/Asignar/Inventario (D11). | Jefe: Eventos. Mesero: Mis eventos |
-| 3 | **Cargos** tab (`CargosEventoComponent`): "+ Mesero / + Portero / + Desmontaje / + Otro", a titular select per cargo (warns if the titular is inactive), tasks inside the accordion. Jefe checkboxes = delegated marking, with a "Marcado por {actor} para {titular}" hint. Mesero sees **Mis tareas** (`MisTareasComponent`): only the cargos where `titularId === uid`. | — |
-| 4 | `/app/eventos/:eid/inventario`, new `inventarioGuard(eid)`: admin/jefe (read only) or Desmontaje titular. Table becomes cards `# \| nombre \| estado \| notas`. Link from the detail page when allowed. | contextual link |
-| 5 | **Invitados** tab: upload (jefe/admin), download, `invitadosTodos` toggle, a `verInvitados` toggle per member. Unauthorized users see "No tienes acceso a la lista de invitados". | — |
-| 6 | `/app/eventos/:eid/auditoria` (`rolGuard('jefe_mesero')`): timeline view and per-person view (`agruparPorPersona`). Finalizing writes the inventory snapshot. Final sweep. | tab/link in detail |
+| 1 | `/app/admin/equipo` (se queda; ya tiene `SegmentedControl` mesero↔jefe): suma el toggle activo/inactivo y una sección de inactivos. Login muestra el mensaje de inactivo. `authGuard` chequea `estado`. `rolGuard` redirige a `/app/eventos`. | sin cambios |
+| 2 | `/app/cargos` (`rolGuard('jefe_mesero')`): `CatalogoCargosComponent` (container) + `CargoCatalogoCardComponent` (presentacional, acordeón con sus tareas). Botones "+ Mesero / + Apoyo / + Otro" (Portero = "Otro"; sin Desmontaje, pospuesto); toggle "Este cargo maneja la lista de invitados" por cargo (Rev. 5); tareas con alta, edición y baja. Se borran `/app/tareas` e `/app/inventario`. | Admin: Eventos · Equipo · Cargos. Jefe: Eventos · Cargos. Mesero: Eventos |
+| 2B | `/app/admin/configuracion` (`rolGuard('administrador')`): `ConfiguracionComponent` (container) + `RangosMeserosComponent` (presentacional): `SegmentedControl` "Por cantidad de personas / Libre"; lista de intervalos "Desde · Hasta (vacío = o más) · Meseros" con agregar, editar y borrar; errores de `validarRangos` en línea; "Guardar". En modo libre los intervalos se ocultan y se avisa "No se sugiere cantidad de meseros". | Admin: + Configuración |
+| 3 | `/app/eventos` según rol (jefe/admin: todos, sin archivados; mesero: `listarMios` ordenados por fecha, **el de hoy primero y destacado; si hoy tiene uno solo se abre directo**; sin eventos: "No tienes eventos ni cargos asignados"). El formulario pide fecha, hora de inicio y hora de fin (el fin cruza medianoche) y `personas`. "Ingresar" navega a `/app/eventos/:eid`: `EventoDetalleComponent` (container, barra de secciones por rol) + sección `equipo` (`EquipoEventoComponent`: selector de usuarios elegibles + "Agregar sin cuenta", badge "Sin cuenta", marca "Inactivo", aviso de cruce de horarios). Crear y editar (admin y jefe) en modal. | — |
+| 3B | Etiqueta de estado derivado (Programado, En curso, Marcado cerrado, Finalizado, "Reabierto" con quién y cuándo). Botones: "Reactivar" (solo admin, finalizado), "Finalizar" (solo admin, reabierto), "Archivar" (solo admin), "Borrar" (solo admin; oculto con "Este evento ya pasó y tiene datos: solo se puede archivar"). La lista oculta archivados; "Ver archivados". | — |
+| 4 | Secciones `cargos` (`CargosEventoComponent`: cargos del catálogo con su titular en este evento o "Sin titular"; aviso "Para 150 personas se sugieren 8 meseros; tienes 6" (o "Sin sugerencia"); renombrar y deshacer asignación con aviso "Solo cambia en este evento"; sin alta de cargos propios), `asignacion` (`AsignacionComponent`: por persona del equipo, un select de cargos del catálogo; un cargo numerado tomado sale deshabilitado con "Ya está tomado por {nombre}"; `Apoyo` siempre disponible; avisa si el titular quedó inactivo), `tareas` (jefe/admin: en vivo lo hecho y un bloque "Sin responsable" (persistidas + derivadas del catálogo mientras sea editable) con reasignar = `mover` o `cubrir`, checkbox = marcado delegado y la nota "Marcado por {actor} para {titular}"; mesero: `MisTareasComponent`, solo su cargo, solo lectura fuera de la ventana de marcado). Se borra `/app/tareas/asignar`. | — |
+| 5 | Sección `invitados` (Rev. 5): `InvitadosComponent` (container) + presentacionales `SubirListaComponent` (solo admin: elegir archivo, previsualización con total, conteo por mesa, avisos y, si es re-subida, resumen de la fusión; "Subir N invitados" / "Cancelar"), `ListaInvitadosComponent` (segmented "Por mesa / Todos", buscador sin tildes, fila con checkbox de asistencia y "Marcado por {nombre} a las {hora}", contadores "llegaron / total" global y por mesa, bloque "Llegaron pero ya no están en la lista") y opcional "Exportar". Antes de la ventana: "Podrás ver la lista desde las {hora}"; sin lista: "Todavía no se cargó la lista de invitados". La sección solo aparece para admin, jefe y titulares de lista. | — |
+| 6 | Sección `auditoria` (`rolGuard('jefe_mesero')`): línea de tiempo y vista por persona (`agruparPorPersona`). Barrido final. | — |
+| Pospuesto | Sección `inventario` con `inventarioGuard(eid)` y cards `# \| nombre \| estado \| notas` (fuera del núcleo; no implementar). | — |
 
-## File Changes (KEEP / MODIFY / DELETE)
+## Cambios de archivos (KEEP / MODIFY / DELETE)
 
-| File / symbol | Action | Slice |
+| Archivo / símbolo | Acción | Slice |
 |---|---|---|
-| `database.rules.json` | Modify: S1 helpers + per-node `.read` (legacy `eventos/*` kept with `ACTIVO`); S2 replaces `eventos`, adds `membresias` and `auditoria`; S4 `inventario`; S5 `invitados` | 1–5 |
-| `firebase.json` | Modify: emulators | 1 |
-| `dominio.models.ts` `EstadoUsuario`, `Usuario` | Modify (+`inactivo`, `estadoCambiado*`) | 1 |
-| `Participante`, `Evento.fecha/horaInicio/horaFin/desmontajeAsignadoA`, `Tarea.asignadoA/tipo/creadoPor/creadoEn`, `TipoTarea`, old `ItemInventario` | Delete | 2 |
-| `Evento` (new shape), `MiembroEquipo`, `EntradaAuditoria`, `EventoDetalle` | Create | 2 |
-| `Cargo`, `TipoCargo`, new `Tarea` | Create | 3 |
-| `ItemInventario` (new), `EstadoInventario`, `ESTADOS_INVENTARIO` | Create | 4 |
-| `ArchivoInvitadosMeta` | Create | 5 |
-| `core/logica/*` + `*.spec.ts` | Create | 2 (patch, push-id, auditoria), 3 (numeracion, permisos), 5 (base64) |
-| `rtdb.service.ts` | Modify (see table) | 1, 6 |
-| `auth.service.ts` | Modify | 1 |
-| `core/interceptors/sesion-inactiva.interceptor.ts`, `app.config.ts` | Create / Modify | 1 |
-| `user.service.ts` | Modify | 1 |
-| `event.service.ts` `listar`, `obtenerVigente`, `listarParticipantes`, `activarme`, `desactivarme`, `generarId` | Delete (rest rewritten) | 2 |
-| `task.service.ts` (incl. `calcularCarga`, `CargaMesero`, `asignar`) | Delete in 2, re-create in 3 | 2/3 |
-| `inventory.service.ts` (incl. `confirmarAdmin`) | Delete in 2, re-create in 4 | 2/4 |
-| `equipo.service.ts`, `audit.service.ts` | Create | 2 |
-| `cargo.service.ts` | Create | 3 |
-| `invitados.service.ts` | Create | 5 |
-| `guards/auth.guard.ts`, `rol.guard.ts` | Modify | 1 |
-| `guards/inventario.guard.ts` | Delete in 2, re-create (eid-based) in 4 | 2/4 |
+| `package.json` | Modificar: declarar `@angular/fire` y `firebase` (hoy se importan sin estar declarados) tras chequear peerDependencies | 0 |
+| `firebase.json` | Modificar: emuladores | 0 |
+| `database.rules.json` | Modificar: S1 helpers + `.read` por nodo + `usuarios` + legacy `eventos/*` con `ACTIVO` + borrado solo admin; S2 `catalogo`, quita legacy `inventario`; S2B `config`; S3 `eventos` (lectura, `info`, `equipo`), `membresias`, `auditoria`; S3B helpers de tiempo, `info` por hojas, `reabierto*`/`archivado*`, borrado condicional; S4 `cargos`, `tareas`, `ocupacion`, `actividad`, quita `participantes`; S4 suma `equipo/$mid/cargoInvitadosId` y `manejaInvitados`; S5 `invitados` (`meta`, `lista` con ventana, hojas de asistencia acopladas, append `invitado.asistencia` en `auditoria`); `inventario` pospuesto | 1–5 |
+| `package.json` (`read-excel-file`; opcional `write-excel-file`) | Modificar, `[ASK]` (D10) | 5 |
+| `dominio.models.ts` `EstadoUsuario`, `Usuario` | Modificar (+`inactivo`, `estadoCambiado*`) | 1 |
+| `CargoCatalogo`, `TareaCatalogo`, `TipoCargo` | Crear | 2 |
+| old `ItemInventario` | Borrar | 2 |
+| `ModoMeseros`, `RangoMeseros`, `ConfigMeseros`, `ErrorRango` | Crear | 2B |
+| `config-meseros.service.ts`, `core/logica/config-meseros.ts` (+specs) | Crear | 2B |
+| `page/admin/configuracion/**` | Crear | 2B |
+| `Evento` (forma nueva, conserva `personas?`), `MiembroEquipo`, `EntradaAuditoria`, `EventoDetalle`, `SeccionEvento` | Crear / reemplazar | 3 |
+| `Participante`, `Evento.fecha/horaInicio/horaFin/desmontajeAsignadoA`, `Tarea.asignadoA/tipo/creadoPor/creadoEn`, `TipoTarea` | Borrar | 3 (`Evento`) / 4 (resto) |
+| `Cargo`, `Tarea` nueva, `ResumenAsignacion` | Crear | 4 |
+| `ItemInventario` (nuevo), `EstadoInventario`, `ESTADOS_INVENTARIO` | **Pospuesto** (no crear) | — |
+| `MetaInvitados`, `Invitado`, `InvitadoParseado`, `ResultadoParseo`, `AvisoParseo`, `ResumenFusion`, `ArchivoInvalidoError` (Rev. 5; reemplazan `ArchivoInvitadosMeta`) | Crear | 5 |
+| `core/logica/*` + `*.spec.ts` | Crear | 2 (push-id, patch-builder, numeracion, catalogo), 3 (auditoria, `PatchBuilder.audit`, ciclo-evento, cruce-horarios), 3B (`puedeBorrar`, `puedeArchivar`), 4 (asignacion-cargos, cargos-sin-responsable, permisos con `punteroLista`), 5 (normalizar, parser-invitados, fusion-invitados, lista-invitados, ventanas-invitados, lector-xlsx), 6 (`agruparPorPersona`) |
+| `rtdb.service.ts` | Modificar (ver tabla) | 1, 6 |
+| `auth.service.ts` | Modificar | 1 |
+| `core/interceptors/sesion-inactiva.interceptor.ts`, `app.config.ts` | Crear / Modificar | 1 |
+| `user.service.ts` | Modificar | 1 |
+| `catalogo.service.ts` | Crear | 2 |
+| `event.service.ts` `eliminar` | Modificar a un PATCH (D17) | 1 |
+| `event.service.ts` `listar`, `obtener`, `actualizar`, `crear` | Reescribir (`listarTodos`, `listarMios`, `editar`, `crear` con auditoría e instantes) | 3 |
+| `event.service.ts` `reactivar`, `finalizar`, `archivar`, `desarchivar`, `borrar` condicional | Crear / modificar | 3B |
+| `event.service.ts` `obtenerVigente`, `listarParticipantes`, `generarId` | Borrar | 4 |
+| `equipo.service.ts`, `audit.service.ts` | Crear | 3 |
+| `cargo.service.ts` | Crear | 4 |
+| `task.service.ts` (incl. `calcularCarga`, `CargaMesero`, `asignar`) | Borrar y re-crear | 4 |
+| `inventory.service.ts` (incl. `confirmarAdmin`) | Borrar en 2; **no se re-crea** (pospuesto) | 2 |
+| `invitados.service.ts` | Crear | 5 |
+| `guards/auth.guard.ts`, `rol.guard.ts` | Modificar | 1 |
+| `guards/inventario.guard.ts` | Borrar en 2; **no se re-crea** (pospuesto) | 2 |
 | `guards/inicio.guard.ts` | Keep | — |
-| `page/admin/equipo/*` | Move to `page/admin/usuarios/*` | 1 |
-| `page/eventos/eventos.component.*` (self-toggle, `participantesPorEvento`) | Modify (rewrite the list) | 2 |
-| `page/eventos/detalle/**` (container + equipo) | Create | 2 (+3, 5 tabs) |
-| `page/tareas/tareas.component.*`, `page/tareas/asignar/*` | Delete | 2 |
-| `page/inventario/*` | Delete; new `page/eventos/inventario/*` | 2 / 4 |
-| `page/eventos/auditoria/*` | Create | 6 |
-| `app.routes.ts`, `shared/nav-items.ts` (`ICONO_ASIGNAR`, Tareas/Asignar entries) | Modify each slice; delete the entries in 2 | 1–6 |
-| `shared/components/*` (badge, modal, layout, header, navs) | Keep | — |
-| `register.component`, `login.component` | Keep / Modify (message only) | 1 |
+| `page/admin/equipo/*` (con `SegmentedControl`) | Keep + toggle activo/inactivo | 1 |
+| `page/cargos/**` | Crear | 2 |
+| `page/tareas/tareas.component.*` | Borrar | 2 |
+| `page/inventario/*` | Borrar; el nuevo `page/eventos/detalle/inventario/*` queda pospuesto | 2 |
+| `page/tareas/asignar/*` | Borrar | 4 |
+| `page/eventos/eventos.component.*` (editar/borrar/"Ingresar" ya hechos) | Modificar: lista por rol y fecha (hoy primero), "Ingresar" navega, hora de inicio/fin con cruce de medianoche; 3B: estado derivado, reactivar/finalizar/archivar | 3 / 3B |
+| `page/eventos/detalle/**` (container + secciones) | Crear | 3 (equipo), 4 (cargos, asignación, tareas), 5 (invitados), 6 (auditoría) |
+| `app.routes.ts`, `shared/nav-items.ts` | Modificar: S2 Cargos en lugar de Tareas/Mis tareas; S2B Configuración (admin); S3–S6 rutas hijas del detalle | 2–6 |
+| `shared/components/*` (badge, modal, layout, header, navs, segmented-control) | Keep | — |
+| `register.component`, `login.component` | Keep / Modify (solo el mensaje) | 1 |
 
-**Slice 6 sweep:** search for `asignadoA|desmontajeAsignadoA|Participante|participantes|calcularCarga|obtenerVigente|TipoTarea|confirmadoPorAdmin|/app/tareas|generarId`. Remove unused `RtdbService` methods and dead icons. Expect zero hits.
+**Barrido del slice 6:** buscar `asignadoA|desmontajeAsignadoA|Participante|participantes|calcularCarga|obtenerVigente|TipoTarea|confirmadoPorAdmin|/app/tareas|/app/inventario|generarId|listarActivosPorRol|activarme|copiarCatalogo|construirCopiaCatalogo|crearPropio|activarSinTitular|cargo\.activar|cargoDesmontajeId|verInvitados|invitadosTodos|flagsPortero|base64DesdeDataUrl|ver_invitados|'portero'`. Quitar métodos sin uso de `RtdbService` e íconos muertos (`ICONO_TAREAS` si quedó sin uso). Cero resultados esperados.
 
-## Testing Strategy
+## Estrategia de testing
 
-| Layer | What | How |
+| Capa | Qué | Cómo |
 |---|---|---|
-| Unit (Karma, pure) | `PatchBuilder` (overlap throws, audit path, nulls), `generarPushId` (ordering, length 20), `siguienteNombreMesero` (gaps → max+1), `flagsPortero`, `permisos`, `base64` round trip (fixed bytes), `agruparPorPersona` | Plain Jasmine, no TestBed |
-| Unit (services) | The exact `Updates` object passed to `patchRaiz`; read composition (shallow + forkJoin) | `TestBed` with a `jasmine.createSpyObj<RtdbService>` that returns `of(...)`, an `AuthService` stub, and a fixed `idGen` |
-| Guards / interceptor | inactive → logout; inventory guard per role | `TestBed.runInInjectionContext` |
-| Rules | matrix + V1–V7 | Emulator plus the manual REST checklist, before each deploy |
+| Unit (Karma, puro) | `PatchBuilder` (superposición lanza, path de auditoría, nulls), `generarPushId` (orden, largo 20), `siguienteNombreMesero` (huecos → max+1; vale para catálogo y evento), `calcularInstantes` (22:00→03:00 cae al día siguiente, cambio de mes y año, bordes), `estadoEvento`/`puedeMarcarMesero`/`puedeEditar` (inicio, fin + 2 h y fin + 4 h inclusivos, `reabierto`), `puedeBorrar`/`puedeArchivar`, `hayCruce` (fin == inicio no cruza), `validarRangos` (superposición, `desde > hasta`, no enteros, dos abiertos, abierto que no es el último, lista vacía válida), `sugerirMeseros` (libre → null, sin personas → null, bordes `desde`/`hasta` inclusivos, intervalo abierto, hueco → null), `construirAsignacion` (ids nuevos ≠ ids del catálogo, `origenCatalogoId` correcto, tareas apuntan al `cargoId` nuevo, `ocupacion = cid`, snapshot sin titular se reutiliza, cargo numerado con titular lanza `CargoOcupadoError`, `apoyo` admite varias personas sin `ocupacion`, la salida no comparte referencias con la plantilla), `tareasSinResponsable` (sin titular, titular quitado, titular inactivo, derivadas del catálogo sin snapshot, `ctid` ya cubierto se excluye, `apoyo` nunca aparece derivado, no editable → sin derivadas), `punteroLista` (sin cargo con permiso → null, varios → uno estable, tras quitar el titular → otro o null), `puedeVerLista`/`puedeMarcarAsistencia` (inicio − 1 h, fin + 4 h, reabierto: jefe sí, titular no), `parsearListaInvitados` (fixture que reproduce el archivo real: 11 títulos, `MESA 5 ` con espacio, `MESA 7` pegada, 0–3 filas vacías; lista sin títulos; encabezados `nombre`/`mesa`; duplicados; no-texto; vacío; > 500), `fusionarLista` (pareja por nombre+mesa, por nombre único con cambio de mesa, homónimos no únicos, desaparecido marcado → `removido`, desaparecido sin marca → borrado, reaparece un `removido`, nunca escribe hojas de asistencia de un emparejado), `filtrarPorNombre` (tildes y mayúsculas), `contadores`, `etiquetaRol`, `permisos`, `seccionesVisibles`, `agruparPorPersona` | Jasmine plano, sin TestBed |
+| Unit (servicios) | El objeto `Updates` exacto que recibe `patchRaiz`; la composición de lecturas (shallow + forkJoin); `CatalogoService` reescribe `actualizadoPor/En`; `CargoService` nunca escribe bajo `catalogo/` | `TestBed` con `jasmine.createSpyObj<RtdbService>` que devuelve `of(...)`, stub de `AuthService` e `idGen` fijo |
+| Guards / interceptor | inactivo → logout; `rolGuard` redirige a `/app/eventos` | `TestBed.runInInjectionContext` |
+| Adaptador xlsx | `lector-xlsx` con un .xlsx mínimo embebido en el spec (bytes fijos) y con bytes basura → `ArchivoInvalidoError` | Karma con `import()` real de la librería |
+| Reglas | matriz + V1–V20 | Emulador + checklist REST manual antes de cada deploy |
 
-**Order inside each slice:** (1) models and types; (2) pure-function specs RED, then GREEN; (3) service specs RED, then GREEN; (4) rules plus a checklist run in the emulator; (5) guards and routes; (6) presentational components, then the container; (7) delete the replaced code and fix nav; (8) manual mobile smoke test.
+**Orden dentro de cada slice:** (1) modelos y tipos; (2) specs de funciones puras RED y luego GREEN; (3) specs de servicios RED y luego GREEN; (4) reglas + corrida del checklist en el emulador; (5) guards y rutas; (6) componentes presentacionales y luego el container; (7) borrar lo reemplazado y ajustar el menú; (8) smoke test manual en mobile.
 
-## Migration / Rollout
+## Migración / rollout
 
-No data migration (the DB only has `/usuarios`). Before each deploy, back up `database.rules.json` and initialize git (the proposal lists this as a High risk). Slices 2 and 3 should ship together if the salon has live events (D11).
+Sin migración de datos: hoy hay `/usuarios` (Milan admin + 4 meseros de prueba `@milan.test`) y `/eventos` con 2 eventos de prueba ("evento 1", "evento 2 xv") con la forma vieja (`fecha/horaInicio/horaFin`, `participantes`). Esos eventos se borran antes de desplegar las reglas del slice 3. El repo está en git (rama `feat/milan-single-salon-setup`): un commit por slice, siempre con aprobación del usuario y sin atribución de IA. Antes de cada deploy de reglas: backup de las reglas vivas (consola), aprobación explícita del usuario. Si el salón trabaja eventos reales antes de terminar, los slices 2, 3, 3B y 4 salen juntos (D11).
 
-## Open Questions
+## Preguntas abiertas
 
-- [ ] **PENDING USER DECISION:** inventory estado, 3 values or 2 exclusive checkboxes (D7)
-- [ ] If the Desmontaje titular is not registered, can admin/jefe edit the inventory? (That is a one-line `|| JEFE_O_ADMIN` in the rule.)
-- [ ] One Desmontaje per event (enforced by the rules: `tipo` ⇔ pointer)
-- [ ] Global audit for role/estado changes, or only `estadoCambiadoPor/En`?
-- [ ] After an event is deleted, its audit stays orphaned (readable by key only). Acceptable?
+- [ ] ~~Q1, Q2, Q3, Q6~~ **Pospuestas** con el inventario/desmontaje (fuera del núcleo; texto conservado: Q1 estado del inventario 3 valores o 2 checkboxes (D7); Q2 admin/jefe editan si el titular de Desmontaje no está registrado; Q3 un solo Desmontaje por evento y catálogo; Q6 lectura del inventario)
+- [ ] Q4: ¿auditoría global para rol/estado y para el catálogo, o alcanza con `estadoCambiadoPor/En` y `actualizadoPor/En`? (default: alcanza)
+- [ ] Q5: ¿el jefe ve "Equipo" en el menú en solo lectura? (default: no)
+- [x] ~~Q7: plantillas `Mesero` faltantes al copiar~~ Reemplazada: ya no hay copia del catálogo (D22); los que sobran toman `Apoyo`.
+- [x] ~~Q8 (supuesto Rev. 3): el Portero descarga el xlsx desde 1 h antes~~ **Reemplazada por el usuario (Rev. 5)**: no hay figura "Portero"; la lista la manejan admin, jefe y titulares de cargos con `manejaInvitados`, desde 1 h antes hasta finalizar (D24)
+- [ ] **Q19 (abierta, NO decidida, Rev. 5):** ¿la lista de invitados (subida o marcas de asistencia) cuenta como "dato" para bloquear el borrado del evento? Mientras tanto nada de invitados escribe `actividad` (D27 dice qué cambiaría si es que sí)
+- [ ] Q20 (supuesto Rev. 5): en una re-subida, un invitado ya marcado que desaparece de la lista nueva se conserva como `removido` con su marca (D26)
+- [ ] Q21 (supuesto Rev. 5): durante un evento reabierto el jefe mantiene la lista y los titulares de lista no (como los meseros con las tareas); el admin sube, re-sube y marca en cualquier momento, incluso finalizado
+- [ ] Q22 (supuesto Rev. 5): admin y jefe pueden activar el permiso `manejaInvitados` en el catálogo y también cambiarlo en un cargo ya asignado de un evento (solo ese evento)
+- [ ] Q23 (supuesto Rev. 5): el tipo de cargo `portero` desaparece ("Portero" pasa a ser un cargo `libre`); límites: 500 invitados por evento, archivo de 1 MiB, nombres de hasta 120 caracteres; los duplicados se conservan con aviso
+- [x] Q9 resuelta por el usuario: cada persona con `Apoyo` recibe su propia copia de las tareas genéricas
+- [x] Q10 resuelta por el usuario: "sin responsable" = cargos del catálogo sin titular en el evento (vista derivada) + snapshots sin titular, con titular quitado o inactivo; se reasignan solo dentro del evento (D22)
+- [x] ~~Q15 cargo propio solo del evento~~ eliminada: el usuario dijo que no es una opción
+- [ ] Q11 (supuesto): "tiene datos" = hubo al menos un marcado (`actividad`)
+- [ ] Q12 (supuesto): admin/jefe marcan y editan antes del inicio y hasta fin + 4 h; el admin ve y maneja la lista de invitados en cualquier momento
+- [ ] Q13 (supuesto): el cruce de horarios de un mesero bloquea (solo cliente)
+- [ ] Q14 (default): "Finalizar" a mano solo cierra un evento reabierto
+- [ ] Q16: al borrar un evento su auditoría queda huérfana (legible solo por clave). ¿Aceptable?
+- [ ] Q17 (nueva): un evento que termina con tareas derivadas "sin responsable" que nadie reasignó no deja registro de ellas (no hay servidor que las guarde al finalizar). ¿Hace falta registrarlas? (default: no)
+- [ ] Q18 (nueva): la vista derivada muestra como "sin responsable" las tareas de **todos** los cargos del catálogo sin titular, aunque el evento sea chico (ej.: catálogo con 10 `Mesero` y sugerencia de 3). ¿Se limitan los `Mesero N` derivados a la cantidad sugerida? (default: no, se muestran todos)
+
+## Viabilidad de reglas
+
+Análisis de la Revisión 4. "SIN VERIFICAR" = depende de un comportamiento del motor de reglas que hay que confirmar en el emulador (V#); no se afirma.
+
+| # | Comportamiento | Veredicto | Cómo queda / por qué |
+|---|---|---|---|
+| a | Ventana de marcado con `now` contra `inicioTs/finTs` guardados | **VIABLE** (V2, V16) | `now >= INICIO && now <= FIN + 7200000` leyendo `root` (estado previo). `now` es la hora del servidor; el cliente no la puede falsear. Si faltan los instantes la aritmética falla y niega (a confirmar, V16). Riesgo residual: los instantes los calcula el cliente de admin/jefe (zona horaria), aceptado. |
+| b | Un solo titular por cargo numerado vía `ocupacion/{ccid}` | **VIABLE con ajuste** (V14) | Lo diseñado antes (`ocupacion = mid`, "liberar y ocupar en el mismo PATCH") **no era viable**: un PATCH no puede llevar dos veces la misma ruta y la regla ve solo el valor final, así que cambiar de titular siempre daba 403. `data.val() === auth.uid` tampoco sirve (quien escribe es el jefe, no el titular). Ajuste: `ocupacion/{ccid} = cid` escrito una sola vez (`!data.exists()`), validado contra `cargos/{cid}/origenCatalogoId`; el titular es el campo único `titularId`. Reasignar = actualizar `titularId`; liberar = borrar `titularId` (el índice queda); deshacer = borrar cargo + índice juntos. La carrera de dos asignaciones simultáneas la resuelve el servidor (el segundo PATCH da 403). |
+| c | Lectura por evento/membresía sin dar el árbol; el mesero lista sus eventos | **VIABLE** (V5) | Sin `.read` en raíz ni en `eventos` para el mesero; `eventos/$eid .read = ACTIVO && MIEMBRO`; `membresias/$uid .read` propio. El mesero hace `GET membresias/{uid}` y luego `GET eventos/{eid}/info` por clave. Las reglas no filtran consultas, por eso el índice. Límite asumido: dentro de su evento el mesero puede leer todo el evento (tareas de otros cargos, flags del equipo). |
+| d | Quién escribe qué; el mesero no cambia título/cargo | **VIABLE con ajuste** (V4, V17) | Al mesero solo se le conceden las hojas `tareas/$tid/estado` y `auditId`; no tiene `.write` en `titulo`, `cargoId`, `nota` ni en la tarea entera, así que no puede cambiarlos. Ajuste: `newData.exists()` en `.write` (un `.validate` no corre en borrados, así que antes podía borrar `estado`). Admin/jefe escriben por subnodo con `EDITABLE`; nunca en `eventos/$eid` salvo el borrado del admin (las concesiones bajan en cascada y no se revocan). `equipo` excluye al admin. |
+| e | Borrar vs. archivar con `actividad` fijada y no desfijable | **VIABLE con ajuste** (V12, V17) | Antes: `.validate` de `actividad` no protege borrados, y el admin podía borrar `info/finTs` (o moverlo al futuro) y después borrar el evento. Ajuste: condición `newData.val() === true` en `.write` de `actividad`; hojas obligatorias de `info` no borrables; fechas congeladas si `CON_DATOS_PASADO`; borrado con `(!actividad \|\| now <= finTs)` que niega si falta `finTs`. `actividad` se escribe en todo marcado (idempotente). Un mesero podría escribir `actividad` sin marcar (vuelve inborrable el evento): bajo, aceptado. |
+| f | PATCH multi-ruta a la raíz con reglas en nodos distintos; auditoría acoplada | **VIABLE, acople SIN VERIFICAR** (V1, V15) | Un `update` multi-ruta es atómico y cada ruta escrita se evalúa contra su propia cadena de `.write`/`.validate`; si una falla, no se aplica nada (comportamiento documentado de RTDB). Que `newData.parent()…` vea las **otras** rutas del mismo PATCH (validación cruzada) es lo esperado pero hay que confirmarlo (V1). Acople: para el mesero, `tareas/$tid/auditId` debe apuntar a una entrada nueva `tarea.marcar` del mismo PATCH y esa entrada exige que la tarea apunte a ella: sin una no pasa la otra. Para admin/jefe el acople no se fuerza (rol de confianza; riesgo aceptado). Si V1 falla: se pierde el acople y la validación cruzada de `ocupacion`; quedaría como riesgo aceptado (auditoría escrita por el cliente). |
+| g | Evento reabierto por admin | **VIABLE** (V11) | Hojas `info/reabierto*` con `.write = ADMIN` sin `EDITABLE`; `EDITABLE` incluye `reabierto === true`; `VENTANA_MESERO` no lo mira, así que los meseros siguen sin marcar. "Finalizar" = el admin borra `reabierto`. La auditoría de reactivar entra porque `ADMIN` puede agregar entradas siempre. |
+| h | Auditoría append-only | **VIABLE** (V3) | `.write` solo en `auditoria/$eid/$aid` con `!data.exists() && newData.exists()`; ningún ancestro concede escritura, así que no se puede reescribir `auditoria/$eid` entero ni editar una hoja de una entrada existente. `ts === now` con `{".sv":"timestamp"}` (V3). Ajuste: la creación por el jefe usaba `EDITABLE`, que falla sin `finTs` → se agrega `CREANDO`; el mesero solo agrega `tarea.marcar` en su ventana. Límite: el contenido (`detalle`) lo arma el cliente. |
+| i | **[Rev. 5]** Ventana de la lista de invitados (lectura y marca) | **VIABLE** (V13) | `.read` solo en `invitados/$eid/lista` (y `meta` aparte, sin ventana); jefe `DESDE_LISTA && EDITABLE`, titular de lista `VENTANA_LISTA`, admin siempre. Mismo mecanismo que la ventana de tareas (`now` contra los instantes de `info`, leídos de `root`). Independiente de `VENTANA_MESERO` por decisión explícita (D27). |
+| k | **[Rev. 5]** Acceso por "algún cargo con el permiso" | **VIABLE con ajuste** (V2, V19) | Las reglas no pueden recorrer `cargos/*` buscando uno con `manejaInvitados` y `titularId === auth.uid`. Ajuste: puntero `equipo/{mid}/cargoInvitadosId` validado contra el post-estado al escribirse y **re-verificado al leer** (`TITULAR_LISTA`). Si el cliente olvida recalcularlo, el efecto es quitar acceso (nunca darlo). Límite: si una persona tiene dos cargos con permiso y pierde el apuntado, pierde acceso hasta que el puntero se recalcule (lo hace el mismo PATCH; ver `punteroLista`). |
+| l | **[Rev. 5]** Marca de asistencia concurrente y auditada; solo el admin crea/borra registros | **VIABLE, acople SIN VERIFICAR** (V1, V7, V18, V20) | Cada invitado es un path; un PATCH por marca con `auditId` ↔ `invitado.asistencia` (mismo patrón que V15). Jefe y titular solo tienen `.write` en `asistio`, `asistioPor`, `asistioEn`, `auditId` y solo sobre registros existentes (`data.parent().exists()`); `$other: false` y los campos obligatorios de `lista/$gid` impiden que creen registros. El admin escribe todo por la cascada de `invitados/$eid` (sin acople: rol de confianza). Las reglas no pueden contar hijos: el máximo de 500 lo hace cumplir solo el cliente (riesgo bajo: solo el admin crea). Sobre el mismo invitado gana la última escritura (aceptado). |
+| j | Cruce de horarios del mesero | **NO VIABLE en reglas** | Las reglas no pueden recorrer otros eventos. Queda solo en el cliente (Q13); no es un tema de seguridad. |
