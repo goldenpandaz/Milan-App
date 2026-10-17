@@ -73,7 +73,7 @@
         />
       </form>
 
-      <div class="mt-5 flex gap-2 border-t border-plata-100 pt-4">
+      <div *ngIf="!esCargoJefe(cargo)" class="mt-5 flex gap-2 border-t border-plata-100 pt-4">
         <button
           (click)="abrirEditar(cargo)"
           class="flex-1 rounded-xl border border-plata-300 bg-white py-2.5 text-sm font-medium text-plata-700 hover:bg-plata-100"

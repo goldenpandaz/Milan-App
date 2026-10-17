@@ -4,8 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { Observable, forkJoin } from 'rxjs';
 import { EventoDetalleService } from '../../../core/services/evento-detalle.service';
 import { CargoEvento, MiembroEquipo, TareaEvento } from '../../../core/models/dominio.models';
-import { nombreRepetido } from '../../../core/logica/catalogo';
-import { cargoDeTitular } from '../../../core/logica/cargos-evento';
+import { nombreRepetido, normalizarNombre } from '../../../core/logica/catalogo';
+import { NOMBRE_CARGO_JEFE, cargoDeTitular } from '../../../core/logica/cargos-evento';
 import { UserService } from '../../../core/services/user.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { BadgeComponent } from '../../../shared/components/badge/badge.component';
@@ -67,6 +67,11 @@ export class CargosEventoComponent implements OnInit {
 
   get destinosPosibles(): CargoEvento[] {
     return this.cargos.filter((c) => c.id !== this.moviendo?.cargo.id);
+  }
+
+  /** El cargo del jefe queda fijo a él: solo se le gestionan las tareas, no el cargo ni el responsable. */
+  esCargoJefe(cargo: CargoEvento): boolean {
+    return normalizarNombre(cargo.nombre) === NOMBRE_CARGO_JEFE;
   }
 
   nombreMiembro(id: string | null): string {

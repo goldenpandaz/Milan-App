@@ -1,0 +1,154 @@
+<p
+  *ngIf="!puedeMarcar"
+  class="rounded-2xl border border-dashed border-plata-300 bg-white p-8 text-center text-base text-black/40"
+>
+  No tienes acceso a la lista de invitados en este evento.
+</p>
+
+<div *ngIf="puedeMarcar" class="space-y-5">
+  <div class="flex items-end justify-between gap-4">
+    <div>
+      <p class="text-3xl font-bold tracking-tight text-plata-900">
+        {{ llegaron }} <span class="text-lg font-medium text-black/40">de {{ invitados.length }} llegaron</span>
+      </p>
+    </div>
+    <div class="flex shrink-0 gap-2">
+      <button
+        *ngIf="archivo"
+        type="button"
+        (click)="descargar()"
+        class="rounded-full border border-plata-300 bg-white px-5 py-3 text-sm font-medium text-plata-700 hover:bg-plata-100"
+      >
+        Descargar lista
+      </button>
+      <label
+        *ngIf="puedeSubir"
+        class="cursor-pointer rounded-full bg-black px-5 py-3 text-sm font-semibold text-white shadow-sm active:bg-plata-800"
+      >
+        {{ leyendo ? 'Leyendo…' : invitados.length ? 'Re-subir lista' : 'Subir lista (.xlsx)' }}
+        <input
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          class="hidden"
+          [disabled]="leyendo"
+          (change)="elegirArchivo($event)"
+        />
+      </label>
+    </div>
+  </div>
+
+  <p *ngIf="errorArchivo" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{{ errorArchivo }}</p>
+  <p *ngIf="error" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{{ error }}</p>
+  <p *ngIf="cargando" class="text-base text-black/40">Cargando…</p>
+
+  <p
+    *ngIf="!cargando && !error && invitados.length === 0"
+    class="rounded-2xl border border-dashed border-plata-300 bg-white p-8 text-center text-base text-black/40"
+  >
+    {{ puedeSubir ? 'Todavía no hay lista de invitados. Sube el Excel para empezar.' : 'Todavía no hay lista de invitados para este evento.' }}
+  </p>
+
+  <ng-container *ngIf="!cargando && invitados.length > 0">
+    <div class="flex flex-col gap-3 sm:flex-row">
+      <input
+        name="busqueda"
+        [(ngModel)]="busqueda"
+        placeholder="Buscar invitado…"
+        autocomplete="off"
+        class="min-w-0 flex-1 rounded-xl border border-plata-300 bg-white px-4 py-3 text-base outline-none focus:border-plata-600"
+      />
+      <div class="flex shrink-0 gap-1 rounded-2xl border border-plata-200 bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          (click)="modo = 'mesa'"
+          class="flex-1 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium"
+          [ngClass]="modo === 'mesa' ? 'bg-black text-white' : 'text-plata-700 hover:bg-plata-100'"
+        >
+          Por mesa
+        </button>
+        <button
+          type="button"
+          (click)="modo = 'todos'"
+          class="flex-1 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium"
+          [ngClass]="modo === 'todos' ? 'bg-black text-white' : 'text-plata-700 hover:bg-plata-100'"
+        >
+          Todos
+        </button>
+      </div>
+    </div>
+
+    <p *ngIf="filtrados.length === 0" class="text-base text-black/40">Ningún invitado coincide con «{{ busqueda }}».</p>
+
+    <ng-container *ngIf="modo === 'mesa'">
+      <section *ngFor="let g of grupos" class="rounded-3xl border border-plata-200 bg-white p-6 shadow-sm">
+        <div class="flex items-baseline justify-between gap-3">
+          <h2 class="truncate text-lg font-semibold text-plata-600">{{ g.mesa ?? 'Sin mesa' }}</h2>
+          <span class="shrink-0 text-sm text-black/50">{{ g.llegaron }}/{{ g.total }}</span>
+        </div>
+        <ul class="mt-3 divide-y divide-plata-100">
+          <ng-container *ngFor="let i of g.invitados; trackBy: trackId">
+            <ng-container *ngTemplateOutlet="fila; context: { $implicit: i, conMesa: false }" />
+          </ng-container>
+        </ul>
+      </section>
+    </ng-container>
+
+    <section *ngIf="modo === 'todos' && filtrados.length > 0" class="rounded-3xl border border-plata-200 bg-white p-6 shadow-sm">
+      <ul class="divide-y divide-plata-100">
+        <ng-container *ngFor="let i of filtrados; trackBy: trackId">
+          <ng-container *ngTemplateOutlet="fila; context: { $implicit: i, conMesa: true }" />
+        </ng-container>
+      </ul>
+    </section>
+  </ng-container>
+</div>
+
+<ng-template #fila let-i let-conMesa="conMesa">
+  <li>
+    <label class="flex cursor-pointer items-center gap-3 py-2.5">
+      <input
+        type="checkbox"
+        class="h-5 w-5 shrink-0 accent-black"
+        [checked]="i.asistio"
+        [disabled]="enCurso.has(i.id)"
+        (change)="alternar(i)"
+      />
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-base" [ngClass]="i.asistio ? 'text-black/40 line-through' : 'text-plata-900'">
+          {{ i.nombre }}
+        </span>
+        <span *ngIf="conMesa && i.mesa" class="block truncate text-xs text-black/40">{{ i.mesa }}</span>
+      </span>
+      <app-badge *ngIf="i.fueraDeLista" texto="Ya no está en la lista" tono="alerta" class="shrink-0" />
+    </label>
+  </li>
+</ng-template>
+
+<app-modal [abierto]="!!previa" titulo="Revisar lista" (cerrar)="previa = null">
+  <div class="space-y-5">
+    <p class="text-base text-black/70">
+      El archivo trae <span class="font-semibold">{{ previa?.length }}</span> invitados.
+      <ng-container *ngIf="invitados.length">
+        Se conserva la llegada de quienes ya estaban marcados.
+      </ng-container>
+    </p>
+    <ul class="max-h-64 divide-y divide-plata-100 overflow-y-auto rounded-xl border border-plata-200">
+      <li *ngFor="let m of conteoPrevia" class="flex justify-between px-4 py-2 text-sm">
+        <span class="truncate text-plata-900">{{ m.mesa ?? 'Sin mesa' }}</span>
+        <span class="shrink-0 text-black/50">{{ m.total }}</span>
+      </li>
+    </ul>
+    <div class="flex gap-3">
+      <button (click)="previa = null" class="flex-1 rounded-xl border border-plata-300 py-3.5 text-base text-plata-700">
+        Cancelar
+      </button>
+      <button
+        (click)="confirmarSubida()"
+        [disabled]="subiendo"
+        class="flex-1 rounded-xl bg-black py-3.5 text-base font-semibold text-white disabled:opacity-40"
+      >
+        {{ subiendo ? 'Guardando…' : 'Confirmar' }}
+      </button>
+    </div>
+  </div>
+</app-modal>

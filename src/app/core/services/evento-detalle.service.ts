@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { Observable, map, of, switchMap } from 'rxjs';
 import { RtdbService } from './rtdb.service';
 import { CatalogoService, DatosCargo } from './catalogo.service';
+import { UserService } from './user.service';
 import { CargoEvento, MiembroEquipo } from '../models/dominio.models';
 import { generarId } from '../logica/id';
 import { siguienteOrden } from '../logica/catalogo';
@@ -19,7 +20,7 @@ import {
 /** Equipo y cargos propios de un evento (copia del catálogo, editable sin tocar el catálogo general). */
 @Injectable({ providedIn: 'root' })
 export class EventoDetalleService {
-  constructor(private rtdb: RtdbService, private catalogo: CatalogoService) {}
+  constructor(private rtdb: RtdbService, private catalogo: CatalogoService, private users: UserService) {}
 
   // ---- Equipo ----
 
@@ -60,9 +61,19 @@ export class EventoDetalleService {
       switchMap((copiado) =>
         copiado
           ? of(null)
-          : this.catalogo
-              .listar()
-              .pipe(switchMap((cat) => this.rtdb.patch('', cambiosCopiarCatalogo(eventoId, cat, generarId))))
+          : this.catalogo.listar().pipe(
+              switchMap((cat) =>
+                this.users.listarEquipo().pipe(
+                  switchMap((usuarios) => {
+                    const jefe = usuarios.find((u) => u.estado === 'activo' && u.rol === 'jefe_mesero');
+                    return this.rtdb.patch(
+                      '',
+                      cambiosCopiarCatalogo(eventoId, cat, generarId, jefe ? { uid: jefe.uid, nombre: jefe.nombre } : null)
+                    );
+                  })
+                )
+              )
+            )
       ),
       switchMap(() => this.listarCargos(eventoId))
     );
@@ -107,5 +118,14 @@ export class EventoDetalleService {
 
   moverTarea(eventoId: string, origen: CargoEvento, tareaId: string, destinoId: string): Observable<unknown> {
     return this.rtdb.patch('', cambiosMoverTarea(eventoId, origen, tareaId, destinoId));
+  }
+
+  /** El titular del cargo marca su propia tarea como hecha o pendiente; las reglas solo dejan tocar estos campos. */
+  marcarTarea(eventoId: string, cargoId: string, tareaId: string, hecho: boolean, uid: string): Observable<unknown> {
+    return this.rtdb.patch(`eventos/${eventoId}/cargos/${cargoId}/tareas/${tareaId}`, {
+      estado: hecho ? 'hecho' : 'pendiente',
+      hechoPor: uid,
+      hechoEn: Date.now(),
+    });
   }
 }

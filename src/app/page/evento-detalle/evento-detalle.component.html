@@ -31,11 +31,16 @@
   <ng-container [ngSwitch]="seccion">
     <app-equipo-evento *ngSwitchCase="'equipo'" [eventoId]="eventoId" [editable]="puedeGestionar" />
     <app-cargos-evento *ngSwitchCase="'cargos'" [eventoId]="eventoId" [editable]="puedeGestionar" />
-    <p
-      *ngSwitchDefault
-      class="rounded-2xl border border-dashed border-plata-300 bg-white p-8 text-center text-base text-black/40"
-    >
-      Próximamente.
-    </p>
+    <ng-container *ngSwitchCase="'invitados'">
+      <p *ngIf="!cargosListo" class="text-base text-black/40">Cargando…</p>
+      <app-invitados-evento
+        *ngIf="cargosListo"
+        [eventoId]="eventoId"
+        [puedeMarcar]="puedeMarcarInvitados"
+        [puedeSubir]="puedeSubirInvitados"
+        [cargoId]="puedeGestionar ? null : cargoInvitadosId"
+      />
+    </ng-container>
+    <app-tareas-evento *ngSwitchCase="'tareas'" [eventoId]="eventoId" [puedeGestionar]="puedeGestionar" />
   </ng-container>
 </div>

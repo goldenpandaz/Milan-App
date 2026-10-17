@@ -82,6 +82,30 @@ export interface CargoEvento {
   tareas: TareaEvento[];
 }
 
+/** Invitado de la lista del evento (`eventos/{eid}/invitados/{iid}`). */
+export interface InvitadoEvento {
+  id: string;
+  nombre: string;
+  /** Sin tildes, minúsculas y espacios colapsados: para buscar y emparejar al re-subir. */
+  nombreNormalizado: string;
+  mesa: string | null;
+  /** Posición en el Excel (por mesa, en el orden en que aparece); así la lista se ve igual que el archivo. */
+  orden: number;
+  asistio: boolean;
+  asistioPor: string | null;
+  asistioEn: number | null;
+  /** Ya había llegado y la lista nueva no lo trae: se conserva para no perder su asistencia. */
+  fueraDeLista?: boolean;
+}
+
+/** El .xlsx original tal cual se subió (`eventos/{eid}/invitadosArchivo`), para poder descargarlo igual que se subió. */
+export interface InvitadosArchivo {
+  nombre: string;
+  base64: string;
+  subidoPor: string;
+  subidoEn: number;
+}
+
 export type EstadoTarea = 'pendiente' | 'hecho';
 
 export type TipoTarea = 'general' | 'lavado' | 'montaje' | 'desmontaje';

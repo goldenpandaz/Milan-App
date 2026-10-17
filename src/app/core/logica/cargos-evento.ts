@@ -1,4 +1,8 @@
 import { CargoCatalogo, CargoEvento, EstadoTarea, MiembroEquipo, TareaEvento } from '../models/dominio.models';
+import { normalizarNombre } from './catalogo';
+
+/** Nombre reservado del cargo de catálogo cuyo titular se asigna solo al jefe de meseros activo. */
+export const NOMBRE_CARGO_JEFE = 'jefe de meseros';
 
 interface TareaEventoCruda {
   titulo: string;
@@ -50,20 +54,38 @@ export function cargoDeTitular(cargos: CargoEvento[], titularId: string, ignorar
 
 const base = (eventoId: string) => `eventos/${eventoId}`;
 
-/** PATCH a la raíz que copia todo el catálogo al evento y marca `catalogoCopiado`, en una sola escritura. */
-export function cambiosCopiarCatalogo(eventoId: string, catalogo: CargoCatalogo[], nuevoId: () => string): Cambios {
+/** Jefe de meseros activo, para sumarlo al equipo y asignarlo como titular del cargo "Jefe de meseros". */
+export interface JefeEvento {
+  uid: string;
+  nombre: string;
+}
+
+/**
+ * PATCH a la raíz que copia todo el catálogo al evento y marca `catalogoCopiado`, en una sola escritura.
+ * El cargo de catálogo "Jefe de meseros" queda asignado de entrada al jefe activo (y lo suma al equipo).
+ */
+export function cambiosCopiarCatalogo(
+  eventoId: string,
+  catalogo: CargoCatalogo[],
+  nuevoId: () => string,
+  jefe: JefeEvento | null = null
+): Cambios {
   const cambios: Cambios = { [`${base(eventoId)}/catalogoCopiado`]: true };
+  if (jefe) cambios[`${base(eventoId)}/equipo/${jefe.uid}`] = { nombre: jefe.nombre, agregadoPor: jefe.uid, agregadoEn: Date.now() };
   for (const cargo of catalogo) {
     const tareas: Record<string, TareaEventoCruda> = {};
     for (const t of cargo.tareas) tareas[t.id] = { titulo: t.titulo, orden: t.orden, estado: 'pendiente' };
-    cambios[`${base(eventoId)}/cargos/${nuevoId()}`] = {
+    const esCargoJefe = jefe && normalizarNombre(cargo.nombre) === NOMBRE_CARGO_JEFE;
+    const cargoId = nuevoId();
+    cambios[`${base(eventoId)}/cargos/${cargoId}`] = {
       nombre: cargo.nombre,
       orden: cargo.orden,
       manejaInvitados: cargo.manejaInvitados,
-      titularId: null,
+      titularId: esCargoJefe ? jefe!.uid : null,
       origenCatalogoId: cargo.id,
       tareas,
     };
+    if (esCargoJefe) cambios[`${base(eventoId)}/ocupacion/${cargoId}`] = jefe!.uid;
   }
   return cambios;
 }

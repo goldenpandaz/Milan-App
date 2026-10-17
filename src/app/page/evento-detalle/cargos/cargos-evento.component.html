@@ -32,7 +32,7 @@
           Responsable: <span class="font-medium text-plata-900">{{ nombreMiembro(cargo.titularId) }}</span>
         </p>
         <button
-          *ngIf="editable"
+          *ngIf="editable && !esCargoJefe(cargo)"
           (click)="abrirTitular(cargo)"
           class="shrink-0 rounded-xl border border-plata-300 bg-white px-3 py-1.5 text-sm font-medium text-plata-700 hover:bg-plata-100"
         >
@@ -79,7 +79,7 @@
           />
         </form>
 
-        <div class="mt-5 flex gap-2 border-t border-plata-100 pt-4">
+        <div *ngIf="!esCargoJefe(cargo)" class="mt-5 flex gap-2 border-t border-plata-100 pt-4">
           <button
             (click)="abrirEditar(cargo)"
             class="flex-1 rounded-xl border border-plata-300 bg-white py-2.5 text-sm font-medium text-plata-700 hover:bg-plata-100"

@@ -4,7 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { CatalogoService } from '../../core/services/catalogo.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CargoCatalogo } from '../../core/models/dominio.models';
-import { nombreRepetido } from '../../core/logica/catalogo';
+import { nombreRepetido, normalizarNombre } from '../../core/logica/catalogo';
+import { NOMBRE_CARGO_JEFE } from '../../core/logica/cargos-evento';
 import { BadgeComponent } from '../../shared/components/badge/badge.component';
 import { ModalComponent } from '../../shared/components/modal/modal.component';
 
@@ -43,6 +44,11 @@ export default class CargosComponent implements OnInit {
 
   get nombreRepetido(): boolean {
     return !!this.nombre.trim() && nombreRepetido(this.nombre, this.cargos, this.editando?.id);
+  }
+
+  /** El cargo "Jefe de meseros" es fijo: se copia a todo evento con el jefe como titular, no se edita ni se borra. */
+  esCargoJefe(cargo: CargoCatalogo): boolean {
+    return normalizarNombre(cargo.nombre) === NOMBRE_CARGO_JEFE;
   }
 
   get puedeGuardar(): boolean {

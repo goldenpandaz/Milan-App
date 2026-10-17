@@ -12,9 +12,9 @@
     },
 
     "catalogo": {
-      ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero')",
       "cargos": {
         "$cargoId": {
+          ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('rol').val() === 'administrador' || root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero') && ($cargoId !== 'c00jefemeseros' || (data.exists() && newData.exists() && newData.child('nombre').val() === data.child('nombre').val() && newData.child('manejaInvitados').val() === data.child('manejaInvitados').val() && newData.child('orden').val() === data.child('orden').val()))",
           ".validate": "newData.hasChildren(['nombre', 'orden'])",
           "nombre": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60" },
           "manejaInvitados": { ".validate": "newData.isBoolean()" },
@@ -71,8 +71,8 @@
         },
 
         "cargos": {
-          ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado'",
           "$cargoId": {
+            ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado' && (data.child('origenCatalogoId').val() !== 'c00jefemeseros' || (data.exists() && newData.exists() && newData.child('nombre').val() === data.child('nombre').val() && newData.child('manejaInvitados').val() === data.child('manejaInvitados').val() && newData.child('titularId').val() === data.child('titularId').val()))",
             ".validate": "newData.hasChildren(['nombre', 'orden'])",
             "nombre": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60" },
             "orden": { ".validate": "newData.isNumber()" },
@@ -81,6 +81,7 @@
             "origenCatalogoId": { ".validate": "newData.isString()" },
             "tareas": {
               "$tareaId": {
+                ".write": "auth != null && data.exists() && newData.exists() && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado' && root.child('eventos').child($eventoId).child('cargos').child($cargoId).child('titularId').val() === auth.uid && newData.child('titulo').val() === data.child('titulo').val() && newData.child('orden').val() === data.child('orden').val()",
                 ".validate": "newData.hasChildren(['titulo', 'orden', 'estado'])",
                 "titulo": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120" },
                 "orden": { ".validate": "newData.isNumber()" },
@@ -98,6 +99,39 @@
           ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado'",
           "$cargoId": {
             ".validate": "newData.isString() && newData.parent().parent().child('cargos').child($cargoId).child('titularId').val() === newData.val()"
+          }
+        },
+
+        "invitadosSubidoEn": {
+          ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado'",
+          ".validate": "newData.isNumber()"
+        },
+
+        "invitadosArchivo": {
+          ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado'",
+          ".validate": "newData.hasChildren(['nombre', 'base64', 'subidoPor', 'subidoEn'])",
+          "nombre": { ".validate": "newData.isString() && newData.val().length <= 200" },
+          "base64": { ".validate": "newData.isString()" },
+          "subidoPor": { ".validate": "newData.isString()" },
+          "subidoEn": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
+
+        "invitados": {
+          ".write": "auth != null && root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' && root.child('eventos').child($eventoId).child('info').child('estado').val() !== 'finalizado'",
+          "$invitadoId": {
+            ".write": "auth != null && root.child('usuarios').child(auth.uid).child('estado').val() === 'activo' && data.exists() && newData.exists() && newData.child('asistioPor').val() === auth.uid && newData.child('nombre').val() === data.child('nombre').val() && newData.child('nombreNormalizado').val() === data.child('nombreNormalizado').val() && newData.child('mesa').val() === data.child('mesa').val() && newData.child('orden').val() === data.child('orden').val() && newData.child('fueraDeLista').val() === data.child('fueraDeLista').val() && (root.child('usuarios').child(auth.uid).child('rol').val() === 'jefe_mesero' || (newData.child('asistioCargo').isString() && root.child('eventos').child($eventoId).child('cargos').child(newData.child('asistioCargo').val()).child('titularId').val() === auth.uid && root.child('eventos').child($eventoId).child('cargos').child(newData.child('asistioCargo').val()).child('manejaInvitados').val() === true))",
+            ".validate": "newData.hasChildren(['nombre', 'nombreNormalizado', 'asistio'])",
+            "nombre": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120" },
+            "nombreNormalizado": { ".validate": "newData.isString() && newData.val().length <= 120" },
+            "mesa": { ".validate": "newData.isString() && newData.val().length <= 120" },
+            "orden": { ".validate": "newData.isNumber()" },
+            "asistio": { ".validate": "newData.isBoolean()" },
+            "asistioPor": { ".validate": "newData.isString()" },
+            "asistioEn": { ".validate": "newData.isNumber()" },
+            "asistioCargo": { ".validate": "newData.isString()" },
+            "fueraDeLista": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
           }
         },
 
