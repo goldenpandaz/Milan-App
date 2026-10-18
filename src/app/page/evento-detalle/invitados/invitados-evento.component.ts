@@ -27,6 +27,8 @@ export class InvitadosEventoComponent implements OnInit {
   @Input({ required: true }) eventoId = '';
   /** Admin, jefe de meseros o titular de un cargo con lista de invitados. */
   @Input() puedeMarcar = false;
+  /** Todo trabajador ve la lista; solo quien puede marcar cambia la llegada. */
+  @Input() puedeVer = false;
   /** Solo el admin sube o re-sube el archivo. */
   @Input() puedeSubir = false;
   /** Cargo con lista de invitados del que es titular quien marca (null para admin y jefe). */
@@ -57,7 +59,7 @@ export class InvitadosEventoComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    if (this.puedeMarcar) this.cargar();
+    if (this.puedeMarcar || this.puedeVer) this.cargar();
   }
 
   descargar(): void {
