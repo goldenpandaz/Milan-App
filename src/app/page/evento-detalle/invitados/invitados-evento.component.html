@@ -25,10 +25,10 @@
         *ngIf="puedeSubir"
         class="cursor-pointer rounded-full bg-black px-5 py-3 text-sm font-semibold text-white shadow-sm active:bg-plata-800"
       >
-        {{ leyendo ? 'Leyendo…' : invitados.length ? 'Re-subir lista' : 'Subir lista (.xlsx)' }}
+        {{ leyendo ? 'Leyendo…' : invitados.length ? 'Re-subir lista' : 'Subir lista (Excel o PDF)' }}
         <input
           type="file"
-          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          accept=".xlsx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           class="hidden"
           [disabled]="leyendo"
           (change)="elegirArchivo($event)"
@@ -45,7 +45,7 @@
     *ngIf="!cargando && !error && invitados.length === 0"
     class="rounded-2xl border border-dashed border-plata-300 bg-white p-8 text-center text-base text-black/40"
   >
-    {{ puedeSubir ? 'Todavía no hay lista de invitados. Sube el Excel para empezar.' : 'Todavía no hay lista de invitados para este evento.' }}
+    {{ puedeSubir ? 'Todavía no hay lista de invitados. Sube el Excel o el PDF para empezar.' : 'Todavía no hay lista de invitados para este evento.' }}
   </p>
 
   <ng-container *ngIf="!cargando && invitados.length > 0">

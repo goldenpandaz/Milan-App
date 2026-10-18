@@ -132,8 +132,9 @@ export class InvitadosEventoComponent implements OnInit {
     input.value = '';
     if (!archivo) return;
     this.errorArchivo = '';
-    if (!archivo.name.toLowerCase().endsWith('.xlsx')) {
-      this.errorArchivo = 'El archivo debe ser un Excel (.xlsx).';
+    const nombre = archivo.name.toLowerCase();
+    if (!nombre.endsWith('.xlsx') && !nombre.endsWith('.pdf')) {
+      this.errorArchivo = 'El archivo debe ser un Excel (.xlsx) o un PDF.';
       return;
     }
     this.leyendo = true;
