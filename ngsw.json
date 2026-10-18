@@ -1,6 +1,6 @@
 {
   "configVersion": 1,
-  "timestamp": 1792283569652,
+  "timestamp": 1792284179565,
   "index": "/Milan-App/index.csr.html",
   "assetGroups": [
     {
@@ -20,7 +20,6 @@
         "/Milan-App/chunk-ACKELEN3.js",
         "/Milan-App/chunk-DE55CQKT.js",
         "/Milan-App/chunk-DSC7JNMX.js",
-        "/Milan-App/chunk-FHGLCR76.js",
         "/Milan-App/chunk-JCZZZAYE.js",
         "/Milan-App/chunk-K3E5QJRF.js",
         "/Milan-App/chunk-KHL2KBMH.js",
@@ -29,6 +28,7 @@
         "/Milan-App/chunk-NQ3EFVO2.js",
         "/Milan-App/chunk-SNBOS6FI.js",
         "/Milan-App/chunk-SZX3K5JO.js",
+        "/Milan-App/chunk-TLOUDEJN.js",
         "/Milan-App/chunk-UEA62G7Q.js",
         "/Milan-App/chunk-VRJIAVFH.js",
         "/Milan-App/chunk-YK2IMOWF.js",
@@ -36,7 +36,7 @@
         "/Milan-App/favicon.ico",
         "/Milan-App/index.csr.html",
         "/Milan-App/index.html",
-        "/Milan-App/main-VYIF7ZJP.js",
+        "/Milan-App/main-OZAX7HRR.js",
         "/Milan-App/manifest.webmanifest",
         "/Milan-App/polyfills-FFHMD2TL.js",
         "/Milan-App/styles-LKBDS4ZC.css"
@@ -77,7 +77,6 @@
     "/Milan-App/chunk-ACKELEN3.js": "b17e175d65a322e6bd558769190fe4c33d121b71",
     "/Milan-App/chunk-DE55CQKT.js": "e880c4bf51bbe01eb0059779d32d26aaf9b418d2",
     "/Milan-App/chunk-DSC7JNMX.js": "a79bef5af2572b51c24d90d647e34efec96ba956",
-    "/Milan-App/chunk-FHGLCR76.js": "279d15b51e8ec45c83acce18e0a8b930dca6fa00",
     "/Milan-App/chunk-JCZZZAYE.js": "8669486b5931d1807547fb0fc05ac791705e5af2",
     "/Milan-App/chunk-K3E5QJRF.js": "fec1575dfc67f31774ce7088ef2a5078eb21e678",
     "/Milan-App/chunk-KHL2KBMH.js": "befeef9e43467615228a6174cfb00cd81ef4599c",
@@ -86,6 +85,7 @@
     "/Milan-App/chunk-NQ3EFVO2.js": "534ab0a9219efdd30074710fdbc0371658dc64ca",
     "/Milan-App/chunk-SNBOS6FI.js": "52f65b0d8d45d4c160c610c1ed87de42286362ac",
     "/Milan-App/chunk-SZX3K5JO.js": "2a8758f63df990d66d1f600e93f0faeed4f3ee27",
+    "/Milan-App/chunk-TLOUDEJN.js": "93a29736cd9e3c1c3c4a8d49e5ce7f1a84ff7354",
     "/Milan-App/chunk-UEA62G7Q.js": "7b2269a2a24396cb243daaff07c2e19d6f7a077b",
     "/Milan-App/chunk-VRJIAVFH.js": "1346df5188fd523587155e0c319a41ef2c5adf26",
     "/Milan-App/chunk-YK2IMOWF.js": "a2dc60fde2bee5e3e5af51475561ff407603cc80",
@@ -100,9 +100,9 @@
     "/Milan-App/icons/icon-512x512.png": "85421872e416248a03c3c9e633504fe350ef49e9",
     "/Milan-App/icons/icon-72x72.png": "477dd7300b22d42e533b464549c1c2f57ef9ae9d",
     "/Milan-App/icons/icon-96x96.png": "604a63be691708aa2ffeb965b5de6c6adc179d48",
-    "/Milan-App/index.csr.html": "05f29273a1d74e0e1aeebefa09e32c034f3d734d",
-    "/Milan-App/index.html": "97b6d5fcc61d463f6cdd23a30d725a6c79230fe2",
-    "/Milan-App/main-VYIF7ZJP.js": "2f47f0ee931ae6bc3eb3a4c3075b06330d210851",
+    "/Milan-App/index.csr.html": "cf028aa9c54acc04b39a5e26b16e6609bd49cfcd",
+    "/Milan-App/index.html": "7acccc06cf30a3a49163e4a620837af2c7b3c988",
+    "/Milan-App/main-OZAX7HRR.js": "24ddf4b71642decadc1932c09877027c63981f1d",
     "/Milan-App/manifest.webmanifest": "9333e0053442800b24ca47176515c722941e6d3a",
     "/Milan-App/polyfills-FFHMD2TL.js": "f49b49a155bc7d192db62a4c15d0a612b460a667",
     "/Milan-App/styles-LKBDS4ZC.css": "3158c9143275d3d5489dd1599c7293e4616357e9"
