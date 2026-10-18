@@ -8,7 +8,7 @@
     </div>
     <a
       routerLink="/app/eventos"
-      class="shrink-0 rounded-xl border border-plata-300 bg-white px-4 py-2.5 text-sm font-medium text-plata-700 hover:bg-plata-100"
+      class="shrink-0 rounded-xl border border-plata-300 bg-white px-4 py-3 text-sm font-medium text-plata-700 hover:bg-plata-100"
     >
       Volver
     </a>
@@ -21,7 +21,7 @@
       *ngFor="let s of secciones"
       type="button"
       (click)="seccion = s.id"
-      class="flex-1 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-medium"
+      class="flex-1 whitespace-nowrap rounded-xl px-3 py-3 text-sm font-medium sm:px-4"
       [ngClass]="seccion === s.id ? 'bg-black text-white' : 'text-plata-700 hover:bg-plata-100'"
     >
       {{ s.texto }}

@@ -1,6 +1,6 @@
 <div class="space-y-5">
-  <div class="flex items-end justify-between gap-4">
-    <p class="text-base text-black/50">Cargos de este evento. Los cambios no afectan el catálogo general.</p>
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <p class="min-w-0 flex-1 basis-48 text-base text-black/50">Cargos de este evento. Los cambios no afectan el catálogo general.</p>
     <button
       *ngIf="editable"
       (click)="abrirNuevo()"
@@ -34,7 +34,7 @@
         <button
           *ngIf="editable && !esCargoJefe(cargo)"
           (click)="abrirTitular(cargo)"
-          class="shrink-0 rounded-xl border border-plata-300 bg-white px-3 py-1.5 text-sm font-medium text-plata-700 hover:bg-plata-100"
+          class="shrink-0 rounded-xl border border-plata-300 bg-white px-4 py-2.5 text-sm font-medium text-plata-700 hover:bg-plata-100"
         >
           {{ cargo.titularId ? 'Cambiar' : 'Asignar' }}
         </button>
@@ -48,18 +48,18 @@
             class="h-5 w-5 shrink-0 rounded border-2"
             [ngClass]="tarea.estado === 'hecho' ? 'border-black bg-black' : 'border-plata-300'"
           ></span>
-          <span class="min-w-0 flex-1 truncate text-base">{{ tarea.titulo }}</span>
+          <span class="min-w-0 flex-1 break-words text-base">{{ tarea.titulo }}</span>
           <ng-container *ngIf="editable">
             <button
               *ngIf="cargos.length > 1"
               (click)="abrirMover(cargo, tarea)"
-              class="shrink-0 whitespace-nowrap rounded-lg border border-plata-300 bg-white px-2.5 py-1 text-xs font-medium text-plata-700 hover:bg-plata-100"
+              class="shrink-0 whitespace-nowrap rounded-lg border border-plata-300 bg-white px-3 py-2 text-xs font-medium text-plata-700 hover:bg-plata-100"
             >
               Mover a…
             </button>
             <button
               (click)="eliminarTarea(cargo, tarea.id)"
-              class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-black/20 hover:bg-red-50 hover:text-red-600 group-hover:text-black/40"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-black/40 hover:bg-red-50 hover:text-red-600 sm:h-8 sm:w-8 sm:text-black/20 sm:group-hover:text-black/40"
               aria-label="Eliminar tarea"
             >
               ✕

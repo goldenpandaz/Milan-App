@@ -1,6 +1,6 @@
 <div class="space-y-8">
   <div class="flex items-end justify-between gap-4">
-    <div>
+    <div class="min-w-0">
       <h1 class="text-3xl font-bold tracking-tight text-plata-900">Cargos</h1>
       <p class="mt-1 text-base text-black/50">Define los cargos y sus tareas. Después se asignan a las personas en cada evento.</p>
     </div>
@@ -40,14 +40,14 @@
               (keyup.enter)="guardarTarea(cargo, tarea.id)"
               (keyup.escape)="cancelarEdicionTarea()"
               (blur)="guardarTarea(cargo, tarea.id)"
-              class="min-w-0 flex-1 rounded-lg border border-plata-400 bg-white px-2 py-1 text-base outline-none"
+              class="min-w-0 flex-1 rounded-lg border border-plata-400 bg-white px-2 py-1.5 text-base outline-none"
             />
           </ng-container>
           <ng-template #textoTarea>
             <button
               type="button"
               (click)="editarTarea(cargo, tarea.id, tarea.titulo)"
-              class="min-w-0 flex-1 truncate text-left text-base hover:text-plata-700"
+              class="min-w-0 flex-1 break-words py-1 text-left text-base hover:text-plata-700"
             >
               {{ tarea.titulo }}
             </button>
@@ -55,7 +55,7 @@
 
           <button
             (click)="eliminarTarea(cargo, tarea.id)"
-            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-black/20 hover:bg-red-50 hover:text-red-600 group-hover:text-black/40"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-black/40 hover:bg-red-50 hover:text-red-600 sm:h-8 sm:w-8 sm:text-black/20 sm:group-hover:text-black/40"
             aria-label="Eliminar tarea"
           >
             ✕

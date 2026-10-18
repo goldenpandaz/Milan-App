@@ -11,11 +11,11 @@ import { AuthService } from '../../../core/services/auth.service';
         <img src="branding/logo-milan.png" alt="Milan" class="h-10 w-auto md:h-11" />
         <span class="hidden text-base font-medium text-black/70 sm:inline">{{ nombre }}</span>
       </div>
-      <div class="flex items-center gap-3">
-        <span class="text-sm font-medium text-black/70 sm:hidden">{{ nombre }}</span>
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="min-w-0 max-w-[40vw] truncate text-sm font-medium text-black/70 sm:hidden">{{ nombre }}</span>
         <button
           (click)="salir()"
-          class="rounded-full border border-plata-300 bg-white px-4 py-2 text-sm font-medium text-plata-700 transition hover:bg-plata-100"
+          class="shrink-0 rounded-full border border-plata-300 bg-white px-4 py-2.5 text-sm font-medium text-plata-700 transition hover:bg-plata-100"
         >
           Salir
         </button>

@@ -27,7 +27,7 @@
         <p class="truncate text-sm text-black/50">{{ usuario.email }}</p>
       </div>
 
-      <div class="flex shrink-0 items-center gap-3">
+      <div class="flex min-w-0 flex-wrap items-center gap-3 sm:shrink-0 sm:flex-nowrap">
         <app-badge *ngIf="usuario.rol === 'administrador'" texto="Administrador" tono="plata" />
         <app-badge *ngIf="usuario.rol === 'jefe_mesero' && usuario.estado === 'activo'" texto="Jefe de meseros" tono="plata" />
 
@@ -36,14 +36,14 @@
             <button
               *ngIf="usuario.rol !== 'jefe_mesero'"
               (click)="pedirJefe(usuario)"
-              class="rounded-full border border-plata-300 bg-white px-4 py-2 text-sm font-medium text-plata-700 hover:bg-plata-100"
+              class="rounded-full border border-plata-300 bg-white px-4 py-2.5 text-sm font-medium text-plata-700 hover:bg-plata-100"
             >
               Hacer jefe
             </button>
             <button
               *ngIf="usuario.rol === 'jefe_mesero'"
               (click)="quitarJefe(usuario)"
-              class="rounded-full border border-plata-300 bg-white px-4 py-2 text-sm font-medium text-plata-700 hover:bg-plata-100"
+              class="rounded-full border border-plata-300 bg-white px-4 py-2.5 text-sm font-medium text-plata-700 hover:bg-plata-100"
             >
               Quitar jefe
             </button>

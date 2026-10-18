@@ -8,20 +8,20 @@
     <form [formGroup]="form" (ngSubmit)="enviar()" class="space-y-4">
       <div>
         <label class="mb-1 block text-xs text-black/50">Tu nombre</label>
-        <input formControlName="nombre" class="w-full rounded-lg border border-plata-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-plata-500" />
+        <input formControlName="nombre" class="w-full rounded-lg border border-plata-300 bg-white px-3 py-3 text-base outline-none focus:border-plata-500" />
       </div>
       <div>
         <label class="mb-1 block text-xs text-black/50">Correo</label>
-        <input type="email" formControlName="email" class="w-full rounded-lg border border-plata-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-plata-500" />
+        <input type="email" formControlName="email" class="w-full rounded-lg border border-plata-300 bg-white px-3 py-3 text-base outline-none focus:border-plata-500" />
       </div>
       <div>
         <label class="mb-1 block text-xs text-black/50">Contraseña</label>
-        <input type="password" formControlName="password" class="w-full rounded-lg border border-plata-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-plata-500" />
+        <input type="password" formControlName="password" class="w-full rounded-lg border border-plata-300 bg-white px-3 py-3 text-base outline-none focus:border-plata-500" />
       </div>
 
       <p *ngIf="error" class="text-sm text-red-600">{{ error }}</p>
 
-      <button type="submit" [disabled]="cargando" class="w-full rounded-lg bg-black py-2.5 text-sm font-semibold text-white transition hover:bg-plata-800 disabled:opacity-50">
+      <button type="submit" [disabled]="cargando" class="w-full rounded-lg bg-black py-3 text-base font-semibold text-white transition hover:bg-plata-800 disabled:opacity-50">
         {{ cargando ? 'Creando…' : 'Crear cuenta' }}
       </button>
       <p class="text-center text-[11px] text-black/40">Tu administrador te va a asignar un rol antes de que puedas entrar.</p>

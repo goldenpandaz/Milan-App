@@ -13,7 +13,7 @@ import { SidebarNavComponent } from '../sidebar-nav/sidebar-nav.component';
       <app-header />
       <div class="flex flex-1 md:flex-row">
         <app-sidebar-nav />
-        <main class="flex-1 overflow-y-auto px-5 py-6 pb-28 md:px-10 md:py-10 md:pb-10">
+        <main class="min-w-0 flex-1 overflow-y-auto px-5 py-6 pb-28 md:px-10 md:py-10 md:pb-10">
           <div class="mx-auto w-full max-w-5xl">
             <router-outlet />
           </div>

@@ -6,13 +6,13 @@
 </p>
 
 <div *ngIf="puedeMarcar" class="space-y-5">
-  <div class="flex items-end justify-between gap-4">
-    <div>
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div class="min-w-0">
       <p class="text-3xl font-bold tracking-tight text-plata-900">
         {{ llegaron }} <span class="text-lg font-medium text-black/40">de {{ invitados.length }} llegaron</span>
       </p>
     </div>
-    <div class="flex shrink-0 gap-2">
+    <div class="flex flex-wrap gap-2">
       <button
         *ngIf="archivo"
         type="button"
