@@ -15,6 +15,7 @@ interface GrupoMesa {
   invitados: InvitadoEvento[];
   llegaron: number;
   total: number;
+  hayCoincidencia: boolean;
 }
 
 @Component({
@@ -74,17 +75,26 @@ export class InvitadosEventoComponent implements OnInit {
     return this.invitados.filter((i) => i.asistio).length;
   }
 
+  /** Con búsqueda, se muestran las mesas donde hay coincidencias, completas, y las coincidencias se resaltan. */
+  get coincidencias(): Set<string> {
+    return this.busqueda.trim() ? new Set(this.filtrados.map((i) => i.id)) : new Set<string>();
+  }
+
   get grupos(): GrupoMesa[] {
-    const visibles = this.filtrados;
-    return contarPorMesa(this.invitados).map(({ mesa }) => {
-      const todos = this.invitados.filter((i) => i.mesa === mesa);
-      return {
-        mesa,
-        invitados: visibles.filter((i) => i.mesa === mesa),
-        llegaron: todos.filter((i) => i.asistio).length,
-        total: todos.length,
-      };
-    }).filter((g) => g.invitados.length > 0);
+    const aciertos = this.coincidencias;
+    const buscando = !!this.busqueda.trim();
+    return contarPorMesa(this.invitados)
+      .map(({ mesa }) => {
+        const todos = this.invitados.filter((i) => i.mesa === mesa);
+        return {
+          mesa,
+          invitados: todos,
+          llegaron: todos.filter((i) => i.asistio).length,
+          total: todos.length,
+          hayCoincidencia: !buscando || todos.some((i) => aciertos.has(i.id)),
+        };
+      })
+      .filter((g) => g.hayCoincidencia);
   }
 
   get conteoPrevia(): { mesa: string | null; total: number }[] {
