@@ -46,3 +46,6 @@ Thumbs.db
 .env.local
 .env.*.local
 src/environments/environment.generated.ts
+
+# Registro de skills generado por las herramientas de IA
+.atl/

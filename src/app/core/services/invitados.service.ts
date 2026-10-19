@@ -4,6 +4,7 @@ import leerXlsx from 'read-excel-file/browser';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
 import { RtdbService } from './rtdb.service';
 import { ItemPdf, celdasDesdePaginasPdf } from '../logica/invitados-pdf';
+import { celdasDesdeTextoWord } from '../logica/invitados-word';
 import { InvitadoEvento, InvitadosArchivo } from '../models/dominio.models';
 import { generarId } from '../logica/id';
 import {
@@ -42,10 +43,12 @@ export class InvitadosService {
     if (archivo.size > MAX_BYTES_ARCHIVO) {
       return { ok: false, error: 'El archivo pesa demasiado. Revisa que sea la lista correcta.' };
     }
-    const esPdf = archivo.name.toLowerCase().endsWith('.pdf');
+    const minusculas = archivo.name.toLowerCase();
+    const esPdf = minusculas.endsWith('.pdf');
+    const esWord = minusculas.endsWith('.docx');
     try {
       const [celdas, base64] = await Promise.all([
-        esPdf ? this.celdasDePdf(archivo) : this.celdasDeExcel(archivo),
+        esPdf ? this.celdasDePdf(archivo) : esWord ? this.celdasDeWord(archivo) : this.celdasDeExcel(archivo),
         this.aBase64(archivo),
       ]);
       const resultado = parsearCeldasInvitados(celdas);
@@ -56,9 +59,18 @@ export class InvitadosService {
         ok: false,
         error: esPdf
           ? 'No se pudo leer el PDF. Verifica que sea la lista de mesas y no una imagen escaneada.'
-          : 'No se pudo leer el archivo. Verifica que sea un Excel (.xlsx) válido.',
+          : esWord
+            ? 'No se pudo leer el Word. Verifica que sea un .docx válido.'
+            : 'No se pudo leer el archivo. Verifica que sea un Excel (.xlsx) válido.',
       };
     }
+  }
+
+  /** mammoth se carga solo al elegir un Word: pesa y no hace falta en el resto de la app. */
+  private async celdasDeWord(archivo: File): Promise<string[]> {
+    const mammoth = await import('mammoth');
+    const { value } = await mammoth.extractRawText({ arrayBuffer: await archivo.arrayBuffer() });
+    return celdasDesdeTextoWord(value);
   }
 
   private async celdasDeExcel(archivo: File): Promise<unknown[]> {
@@ -103,14 +115,20 @@ export class InvitadosService {
     const binario = atob(archivo.base64);
     const bytes = new Uint8Array(binario.length);
     for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
-    const esPdf = archivo.nombre.toLowerCase().endsWith('.pdf');
+    const nombre = archivo.nombre.toLowerCase();
+    const esPdf = nombre.endsWith('.pdf');
+    const esWord = nombre.endsWith('.docx');
     const blob = new Blob([bytes], {
-      type: esPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      type: esPdf
+        ? 'application/pdf'
+        : esWord
+          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = archivo.nombre || (esPdf ? 'invitados.pdf' : 'invitados.xlsx');
+    a.download = archivo.nombre || (esPdf ? 'invitados.pdf' : esWord ? 'invitados.docx' : 'invitados.xlsx');
     a.click();
     URL.revokeObjectURL(url);
   }

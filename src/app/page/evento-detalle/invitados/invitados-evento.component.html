@@ -25,10 +25,10 @@
         *ngIf="puedeSubir"
         class="cursor-pointer rounded-full bg-black px-5 py-3 text-sm font-semibold text-white shadow-sm active:bg-plata-800"
       >
-        {{ leyendo ? 'Leyendo…' : invitados.length ? 'Re-subir lista' : 'Subir lista (Excel o PDF)' }}
+        {{ leyendo ? 'Leyendo…' : invitados.length ? 'Re-subir lista' : 'Subir lista (Excel, Word o PDF)' }}
         <input
           type="file"
-          accept=".xlsx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          accept=".xlsx,.docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           class="hidden"
           [disabled]="leyendo"
           (change)="elegirArchivo($event)"
